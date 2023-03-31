@@ -2,6 +2,7 @@
 
 int main() {
     constexpr PreprocessorFlags flags = default_flags | PreprocessorFlags::debug;
-    process_file("example_file.py", flags);
+    std::unordered_set<std::string> ignored_functions { "function_to_ignore", "function_to_ignore_2" };
+    process_file("example_file.py", ignored_functions, flags);
     return 0;
 }

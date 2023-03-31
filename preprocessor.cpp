@@ -1,15 +1,16 @@
-#include <fstream>     // ifstream, ofstream
-#include <string>      // string
-#include <cstring>     // memmove
-#include <cstdint>     // size_t, uint32_t
-#include <sys/types.h> // ssize_t
-#include <ctime>       // time
-#include <cstdarg>     // __VA_ARGS__
-#include <cstdio>      // fprintf
-#include <cstdlib>     // rand, srand
-#include <iostream>    // cout, cerr
-#include <vector>      // vector<T>
-#include <type_traits> // is_same<>
+#include <fstream>       // ifstream, ofstream
+#include <string>        // string
+#include <cstring>       // memmove
+#include <cstdint>       // size_t, uint32_t
+#include <sys/types.h>   // ssize_t
+#include <ctime>         // time
+#include <cstdarg>       // __VA_ARGS__
+#include <cstdio>        // fprintf
+#include <cstdlib>       // rand, srand
+#include <iostream>      // cout, cerr
+#include <vector>        // vector<>
+#include <type_traits>   // is_same<>
+#include <unordered_set> // unordered_set<>
 
 #include "preprocessor.hpp"
 
@@ -21,12 +22,11 @@ static constexpr size_t MAX_BUFF_SIZE = 1024;
 static_assert((MAX_BUFF_SIZE & (MAX_BUFF_SIZE - 1)) == 0);
 
 #define Check_BuffLen(buff_length) \
-    Check_BuffLen_Reserve(buff_length, (size_t)0)
+    Check_BuffLen_Reserve(buff_length, 0)
 
 #define Check_BuffLen_Reserve(buff_length, additional_reserve)\
     static_assert(std::is_same<decltype(buff_length), size_t>::value); \
-    static_assert(std::is_same<decltype(additional_reserve), size_t>::value); \
-    if ((buff_length + additional_reserve) & (~(MAX_BUFF_SIZE - 1))) {\
+    if ((buff_length + (size_t)additional_reserve) & (~(MAX_BUFF_SIZE - 1))) {\
         if ((preprocessor_flags & PreprocessorFlags::verbose) != PreprocessorFlags::no_flags) {\
             std::clog << "Max buffer size is reached\n";\
         }\
@@ -64,6 +64,7 @@ static_assert((MAX_BUFF_SIZE & (MAX_BUFF_SIZE - 1)) == 0);
 
 static inline void count_symbols(const char *buf, const size_t length, std::vector<size_t> *symbols_indexes) {
     bool is_string_opened = false;
+    bool is_long_string_opened = false;
     char string_opening_char = '\0'; // will be either '\'' or '\"'
 
     for (size_t i = 0; i != length; ++i) {
@@ -73,9 +74,18 @@ static inline void count_symbols(const char *buf, const size_t length, std::vect
         {// This string is part of the type hint.
             if (curr_char == '\'' || curr_char == '\"')
             {// Only '\'' or '\"' chars can close / open string
-                is_string_opened = !(curr_char == string_opening_char); // If they are equal, string will be closed
-                if (!is_string_opened)
-                {// If string was closed now
+                if (curr_char != string_opening_char) {
+                    continue;
+                }
+
+                // Current char is equal to the char that opened the string.
+
+                if (!is_long_string_opened || (length + 2 < length && buf[i + 1] == curr_char && buf[i + 2] == curr_char))
+                {// Context is in the string like ' data ' or " data "
+                 // or
+                 // Context is in the string like ''' data ''' or """ data """ and long string is closed.
+                    is_string_opened = false;
+                    is_long_string_opened = false;
                     string_opening_char = '\0';
                 }
             }
@@ -86,6 +96,9 @@ static inline void count_symbols(const char *buf, const size_t length, std::vect
         case '\'':
         case '\"':
             is_string_opened = true;
+            if (i + 2 < length && buf[i + 1] == curr_char && buf[i + 2] == curr_char) {
+                is_long_string_opened = true;
+            }
             string_opening_char = curr_char;
             continue;
         case ':':
@@ -223,7 +236,13 @@ static inline ssize_t bin_search_elem_index_less_then_elem(const std::vector<siz
     return (ssize_t)r;
 }
 
-static ErrorCodes process_file_internal(std::ifstream &fin, std::ofstream &fout, const PreprocessorFlags preprocessor_flags) {
+static ErrorCodes
+process_file_internal(
+    std::ifstream &fin,
+    std::ofstream &fout,
+    const std::unordered_set<std::string> &ignored_functions,
+    const PreprocessorFlags preprocessor_flags
+) {
     const bool is_debug_mode = (preprocessor_flags & PreprocessorFlags::debug) != PreprocessorFlags::no_flags;
     ErrorCodes current_state = ErrorCodes::no_errors;
     
@@ -245,6 +264,7 @@ static ErrorCodes process_file_internal(std::ifstream &fin, std::ofstream &fout,
 
     int curr_char = 0;
     bool is_string_opened = false;
+    bool is_long_string_opened = false;
     char string_opening_char = '\0';
         
     while ((curr_char = fin.get()) != -1) {
@@ -342,9 +362,14 @@ static ErrorCodes process_file_internal(std::ifstream &fin, std::ofstream &fout,
             AssertWithArgs(
                 curr_char != -1,
                 ErrorCodes::function_parse_error,
-                "Got EOF instead of function name initialization at line %u\n",
+                "Got EOF instead of function name at line %u\n",
                 lines_count
             )
+
+            std::string func_name;
+            /*An identifier can have a maximum length of 79 characters in Python.*/
+            func_name.reserve(79);
+            func_name += (char)curr_char;
             
             // Read function name.
             while ((curr_char = fin.get()) != -1) {
@@ -353,16 +378,41 @@ static ErrorCodes process_file_internal(std::ifstream &fin, std::ofstream &fout,
                 if (curr_char == '(') {
                     break;
                 }
-                if (curr_char == '\n' || curr_char == '\r') {
-                    ++late_line_increase_counter;
-                }
+
+                func_name += (char)curr_char;
+
+                AssertWithArgs(
+                    (curr_char != '\n' && curr_char != '\r'),
+                    ErrorCodes::function_name_parse_error,
+                    "Got new line char instead of function name at line %u\n",
+                    lines_count
+                )
             }
             AssertWithArgs(
                 curr_char != -1,
                 ErrorCodes::function_parse_error,
-                "Got EOF instead of function name initialization at line %u\n",
+                "Got EOF instead of function name at line %u\n",
                 lines_count
             )
+
+            const bool ignore_function = ignored_functions.contains(func_name);
+            if (ignore_function) {
+                while ((curr_char = fin.get()) != -1) {
+                    if (curr_char == ')') {
+                        goto function_params_initialization_end;
+                    }
+                    
+                    Check_BuffLen(buff_length)
+                    buf[buff_length++] = (char)curr_char;
+                }
+                AssertWithArgs(
+                    false,
+                    ErrorCodes::function_parse_error,
+                    "Got EOF instead of ignored function args, body or return type at line %u\n",
+                    lines_count
+                )
+                continue;               
+            }
 
             while (true)
             {// Go through function params.
@@ -412,7 +462,7 @@ static ErrorCodes process_file_internal(std::ifstream &fin, std::ofstream &fout,
                         {
                             AssertWithArgs(
                                 opened_square_brackets != 0,
-                                ErrorCodes::function_argument_type_hint_error, 
+                                ErrorCodes::function_argument_type_hint_parse_error, 
                                 "Too much closing square brackets in the function argument type hint at line %u\n",
                                 lines_count
                             );
@@ -450,7 +500,7 @@ static ErrorCodes process_file_internal(std::ifstream &fin, std::ofstream &fout,
             }
 
             function_params_initialization_end:           
-            Check_BuffLen_Reserve(buff_length, (size_t)2)
+            Check_BuffLen_Reserve(buff_length, 2)
             AssertWithArgs(
                 curr_char == ')',
                 ErrorCodes::function_parse_error,
@@ -474,7 +524,7 @@ static ErrorCodes process_file_internal(std::ifstream &fin, std::ofstream &fout,
             }
             AssertWithArgs(
                 curr_char != -1,
-                ErrorCodes::function_parse_error,
+                ErrorCodes::function_return_type_hint_parse_error,
                 "Got EOF instead of function body or return type at line %u\n",
                 lines_count
             )
@@ -485,7 +535,7 @@ static ErrorCodes process_file_internal(std::ifstream &fin, std::ofstream &fout,
             }
             AssertWithArgs(
                 curr_char == '-',
-                ErrorCodes::function_parse_error,
+                ErrorCodes::function_return_type_hint_parse_error,
                 "Expected '-' symbol for function return type hint construction 'def foo() -> return_type:', got '%c' at line %u\n",
                 curr_char,
                 lines_count
@@ -493,19 +543,142 @@ static ErrorCodes process_file_internal(std::ifstream &fin, std::ofstream &fout,
             curr_char = fin.get();
             AssertWithArgs(
                 curr_char != -1,
-                ErrorCodes::function_parse_error,
+                ErrorCodes::function_return_type_hint_parse_error,
                 "Got EOF instead of function return type hint at line %u\n",
                 lines_count
             )
             AssertWithArgs(
                 curr_char == '>',
-                ErrorCodes::function_parse_error,
+                ErrorCodes::function_return_type_hint_parse_error,
                 "Expected '>' symbol for function return type hint construction 'def foo() -> return_type:', got '%c' at line %u\n",
                 curr_char,
                 lines_count
             )
 
+            is_string_opened = false;
+            string_opening_char = '\0';
+
+            if (ignore_function) {
+                buf[buff_length++] = '-';
+                buf[buff_length++] = '>';
+            }
+
             while ((curr_char = fin.get()) != -1) {
+                if (is_string_opened)
+                {// This string is part of the type hint.
+                    if (ignore_function) {
+                        Check_BuffLen_Reserve(buff_length, 2)
+                        buf[buff_length++] = (char)curr_char;
+                    }
+
+                    if (curr_char == '\'' || curr_char == '\"')
+                    {// Only '\'' or '\"' chars can close / open string
+                        if (curr_char != string_opening_char) {
+                            continue;
+                        }
+
+                        // Current char is equal to the char that opened the string.
+
+                        if (!is_long_string_opened)
+                        {// Context is in the string like ' data ' or " data "
+                            is_string_opened = false;
+                            string_opening_char = '\0';
+                        } else
+                        {// Context is like """data"... or '''data'...
+                            curr_char = fin.get();
+                            AssertWithArgs(
+                                curr_char != -1,
+                                ErrorCodes::function_return_type_hint_parse_error,
+                                "Got EOF instead of function return type hint at line %u. String was not closed.\n",
+                                lines_count
+                            )
+                            if (ignore_function) {
+                                buf[buff_length++] = (char)curr_char;
+                            }
+
+                            if (curr_char != string_opening_char)
+                            {// Context is """data"'... or '''data'"...
+                                continue;
+                            }
+
+                            // Context is """data""... or '''data''...
+
+                            curr_char = fin.get();
+                            AssertWithArgs(
+                                curr_char != -1,
+                                ErrorCodes::function_return_type_hint_parse_error,
+                                "Got EOF instead of function return type hint at line %u. String was not closed.\n",
+                                lines_count
+                            )
+                            if (ignore_function) {
+                                buf[buff_length++] = (char)curr_char;
+                            }
+
+                            if (curr_char != string_opening_char)
+                            {// Context is """data"''... or '''data'""...
+                                continue;
+                            }
+
+                            is_string_opened = false;
+                            is_long_string_opened = false;
+                            string_opening_char = '\0';
+                        }
+                    }
+                    continue;
+                }
+
+                if (curr_char == '\'' || curr_char == '\"') {
+                    if (ignore_function) {
+                        Check_BuffLen(buff_length);
+                        buf[buff_length++] = (char)curr_char;
+                    }
+
+                    is_string_opened = true;
+                    string_opening_char = curr_char;
+
+                    curr_char = fin.get();
+                    AssertWithArgs(
+                        curr_char != -1,
+                        ErrorCodes::function_return_type_hint_parse_error,
+                        "Got EOF instead of function return type hint at line %u. String was not closed.\n",
+                        lines_count
+                    )
+
+                    if (ignore_function) {
+                        Check_BuffLen_Reserve(buff_length, 2)
+                        buf[buff_length++] = (char)curr_char;
+                    }
+
+                    if (curr_char != string_opening_char)
+                    {// Context is "'... or '"...
+                        continue;
+                    }
+
+                    // Context is ""... or ''...
+
+                    curr_char = fin.get();
+                    AssertWithArgs(
+                        curr_char != -1,
+                        ErrorCodes::function_return_type_hint_parse_error,
+                        "Got EOF instead of function return type hint at line %u\n",
+                        lines_count
+                    )
+
+                    if (curr_char == string_opening_char)
+                    {// Context is """... or '''...
+                        is_long_string_opened = true;
+                    } else
+                    {// Context is "" or ''
+                        is_long_string_opened = false;
+                        is_string_opened = false;
+                    }
+
+                    if (ignore_function) {
+                        buf[buff_length++] = (char)curr_char;
+                    }
+                    continue;
+                }
+
                 if (is_function_accepted_space(curr_char)) {
                     Check_BuffLen(buff_length);
                     buf[buff_length++] = curr_char;
@@ -521,6 +694,11 @@ static ErrorCodes process_file_internal(std::ifstream &fin, std::ofstream &fout,
                     Check_BuffLen(buff_length);
                     buf[buff_length++] = ':';
                     goto write_buf_after_func;
+                }
+
+                if (ignore_function) {
+                    Check_BuffLen_Reserve(buff_length, 2)
+                    buf[buff_length++] = (char)curr_char;
                 }
             }
             AssertWithArgs(
@@ -660,7 +838,11 @@ static inline std::string gen_random_filename() {
     return tmp_s;
 }
 
-ErrorCodes process_file(const std::string &input_filename, const PreprocessorFlags preprocessor_flags) {
+ErrorCodes process_file(
+    const std::string &input_filename,
+    const std::unordered_set<std::string> &ignored_functions,
+    const PreprocessorFlags preprocessor_flags
+) {
     const bool is_verbose_mode = (preprocessor_flags & PreprocessorFlags::verbose) != PreprocessorFlags::no_flags;
 
     std::ifstream fin(input_filename);
@@ -683,7 +865,7 @@ ErrorCodes process_file(const std::string &input_filename, const PreprocessorFla
         return ErrorCodes::tmp_file_open_error;
     }
 
-    ErrorCodes ret_code = process_file_internal(fin, tmp_fout, preprocessor_flags);
+    ErrorCodes ret_code = process_file_internal(fin, tmp_fout, ignored_functions, preprocessor_flags);
     fin.close();
     tmp_fout.close();
 
