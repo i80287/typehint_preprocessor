@@ -2,6 +2,7 @@
 #include <string>      // string
 #include <cstdint>     // size_t, uint32_t
 #include <sys/types.h> // ssize_t
+#include <ctime>       // time
 #include <cstdarg>     // __VA_ARGS__
 #include <cstdio>      // fprintf
 #include <cstdlib>     // rand, srand
@@ -567,7 +568,7 @@ static inline std::string gen_random_filename() {
     std::string tmp_s;
     tmp_s.reserve(length + sizeof("_tmp.py"));
 
-    std::srand((uint32_t)(time(0) ^ rand()));
+    std::srand((uint32_t)(std::time(0) ^ std::rand()));
     for (size_t i = 0; i != length; ++i) {
         tmp_s += alphanum[std::rand() % (sizeof(alphanum) - 1)];
     }
