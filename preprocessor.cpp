@@ -1,5 +1,6 @@
 #include <fstream>     // ifstream, ofstream
 #include <string>      // string
+#include <cstring>     // memmove
 #include <cstdint>     // size_t, uint32_t
 #include <sys/types.h> // ssize_t
 #include <ctime>       // time
