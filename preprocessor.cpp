@@ -304,6 +304,7 @@ static ErrorCodes process_file_internal(std::ifstream &fin, std::ofstream &fout,
                 lines_count
             )
             
+            // Read function name.
             while ((curr_char = fin.get()) != -1) {
                 Check_BuffLen(buff_length)
                 buf[buff_length++] = (char)curr_char;
@@ -317,66 +318,91 @@ static ErrorCodes process_file_internal(std::ifstream &fin, std::ofstream &fout,
             AssertWithArgs(
                 curr_char != -1,
                 ErrorCodes::function_parse_error,
-                "Got EOF instead of function params initialization at line %u\n",
+                "Got EOF instead of function name initialization at line %u\n",
                 lines_count
             )
 
             while (true)
-            {// Go through function pararms.
-                bool arg_without_typehint = false;
+            {// Go through function params.
+                function_arg_ended:
+                bool typehint_started = false;
+                bool default_value_initialization_started = false;
+                bool is_string_opened = false;
+                char string_opening_char = '\0'; // will be either '\'' or '\"'
+                uint32_t opened_square_brackets = 0;
+
                 while ((curr_char = fin.get()) != -1) {
-                    if (curr_char == ':')
-                    {// typehint started
-                        break;
+                    if (is_string_opened && !default_value_initialization_started)
+                    {// This string is part of the type hint.
+                        if (curr_char == '\'' || curr_char == '\"')
+                        {// Only '\'' or '\"' chars can close / open string
+                            is_string_opened = !(curr_char == string_opening_char); // If they are equal, string will be closed
+                            if (!is_string_opened)
+                            {// If string was closed now
+                                string_opening_char = '\0';
+                            }
+                        }
+                        continue;
                     }
 
-                    if (curr_char == ')') {
+                    switch (curr_char)
+                    {
+                    case '\'':
+                    case '\"':
+                        is_string_opened = true;
+                        string_opening_char = curr_char;
+                        if (!default_value_initialization_started) {
+                            continue; // Do not write type hint string opening chars to the buffer.
+                        }
+                        break;
+                    case ',':
+                        if (opened_square_brackets == 0)
+                        {// Current function arg ended. Check if we are not in the type hint like dict[int, dict]
+                            Check_BuffLen(buff_length)
+                            buf[buff_length++] = ',';
+                            goto function_arg_ended;
+                        }
+                        break;
+                    case '[':
+                        ++opened_square_brackets;
+                        break;
+                    case ']':
+                        {
+                            AssertWithArgs(
+                                opened_square_brackets != 0,
+                                ErrorCodes::function_argument_type_hint_error, 
+                                "Too much closing square brackets in the function argument type hint at line %u\n",
+                                lines_count
+                            );
+                            --opened_square_brackets;
+                        }
+                        break;
+                    case ')':
                         goto function_params_initialization_end;
-                    }
-
-                    Check_BuffLen(buff_length)
-                    buf[buff_length++] = (char)curr_char;
-
-                    
-                    if (curr_char == '=')
-                    {// Function argument default value initialization.
-                        arg_without_typehint = true;
+                    case ':':
+                        if (!default_value_initialization_started) {
+                            typehint_started = true;
+                        }
                         break;
-                    } else if (curr_char == '\n' || curr_char == '\r') {
+                    case '=':
+                        typehint_started = false;
+                        default_value_initialization_started = true;
+                        break;
+                    case '\n':
+                    case '\r':
                         ++late_line_increase_counter;
-                    }
-                }
-                AssertWithArgs(
-                    curr_char != -1,
-                    ErrorCodes::function_parse_error,
-                    "Got EOF instead of function argument type hint at line %u\n",
-                    lines_count
-                )
-
-                while ((curr_char = fin.get()) != -1) {
-                    if (curr_char == ',')
-                    {// Current function arg ended.
-                        Check_BuffLen(buff_length)
-                        buf[buff_length++] = ',';
                         break;
                     }
 
-                    if (curr_char == ')') {
-                        goto function_params_initialization_end;
-                    }
-
-                    if (arg_without_typehint) {
+                    if (!typehint_started) {
+                        Check_BuffLen(buff_length)
                         buf[buff_length++] = (char)curr_char;
                     }
-
-                    if (curr_char == '\n' || curr_char == '\r') {
-                        ++late_line_increase_counter;
-                    }
                 }
                 AssertWithArgs(
                     curr_char != -1,
                     ErrorCodes::function_parse_error,
-                    "Got EOF instead of function body or return type at line %u\n",
+                    "Got EOF instead of function args, body or return type at line %u\n",
                     lines_count
                 )
             }

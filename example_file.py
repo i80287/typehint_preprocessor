@@ -35,8 +35,11 @@ def \
     return {0: {}}
 
 
-def h(x = {0: 0}):
+def h(x = {0: 0}, w = {1: 1}, y: dict[int, int] = {2: 2}):
     return x
+
+def string(s: Literal['''"a" : a = a'''] = "a : a = a"):
+    return "abc : adsd = as"
 
 try\
     :
