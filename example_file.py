@@ -38,8 +38,10 @@ def \
 def h(x = {0: 0}, w = {1: 1}, y: dict[int, int] = {2: 2}):
     return x
 
+s:str="a : a = a"
+
 def string(s: Literal['''"a" : a = a'''] = "a : a = a"):
-    return "abc : adsd = as"
+    return "a : a = a"
 
 try\
     :

@@ -63,8 +63,31 @@ static_assert((MAX_BUFF_SIZE & (MAX_BUFF_SIZE - 1)) == 0);
     }\
 
 static inline void count_symbols(const char *buf, const size_t length, std::vector<size_t> *symbols_indexes) {
+    bool is_string_opened = false;
+    char string_opening_char = '\0'; // will be either '\'' or '\"'
+
     for (size_t i = 0; i != length; ++i) {
-        switch (buf[i]) {
+        const char curr_char = buf[i];
+        
+        if (is_string_opened)
+        {// This string is part of the type hint.
+            if (curr_char == '\'' || curr_char == '\"')
+            {// Only '\'' or '\"' chars can close / open string
+                is_string_opened = !(curr_char == string_opening_char); // If they are equal, string will be closed
+                if (!is_string_opened)
+                {// If string was closed now
+                    string_opening_char = '\0';
+                }
+            }
+            continue;
+        }
+
+        switch (curr_char) {
+        case '\'':
+        case '\"':
+            is_string_opened = true;
+            string_opening_char = curr_char;
+            continue;
         case ':':
             if (i + 1 == length || buf[i + 1] != '=')
             {// walrus operator a := 10
@@ -221,9 +244,28 @@ static ErrorCodes process_file_internal(std::ifstream &fin, std::ofstream &fout,
     uint32_t lines_count = 1;
 
     int curr_char = 0;
+    bool is_string_opened = false;
+    char string_opening_char = '\0';
+        
     while ((curr_char = fin.get()) != -1) {
         uint32_t late_line_increase_counter = 0;
-        if (is_not_delim(curr_char)) {
+
+        if (is_not_delim(curr_char) || is_string_opened) {
+            if (curr_char == '\'' || curr_char == '\"')
+            {// Only '\'' or '\"' chars can close / open string
+                if (is_string_opened) {
+                    is_string_opened = !(curr_char == string_opening_char); // If they are equal, string will be closed
+                    if (!is_string_opened)
+                    {// If string was closed now
+                        string_opening_char = '\0';
+                    }
+                }
+                else {
+                    is_string_opened = true;
+                    string_opening_char = curr_char;
+                }
+            }
+
             Check_BuffLen(buff_length)
             buf[buff_length++] = (char)curr_char;
             continue;
@@ -327,7 +369,7 @@ static ErrorCodes process_file_internal(std::ifstream &fin, std::ofstream &fout,
                 function_arg_ended:
                 bool typehint_started = false;
                 bool default_value_initialization_started = false;
-                bool is_string_opened = false;
+                is_string_opened = false;
                 char string_opening_char = '\0'; // will be either '\'' or '\"'
                 uint32_t opened_square_brackets = 0;
 
@@ -492,14 +534,13 @@ static ErrorCodes process_file_internal(std::ifstream &fin, std::ofstream &fout,
 #ifdef _MSC_VER
 #pragma endregion Function_parsing
 #endif
-        
         if (is_colon_operator(buf, buff_length)) {
             if (!contains_colon_symbol) {
                 ++colon_operators_starts;
             }
             goto write_buf;
         }
-
+        
         if (contains_colon_symbol)
         {// Probably type hint started.
             if (colon_operators_starts != 0) {
@@ -583,6 +624,7 @@ static ErrorCodes process_file_internal(std::ifstream &fin, std::ofstream &fout,
             )
 
             lines_count += late_line_increase_counter;
+            is_string_opened = false;
             buff_length = 0;
 
             continue;
