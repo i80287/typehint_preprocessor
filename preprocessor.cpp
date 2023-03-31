@@ -215,7 +215,7 @@ static ErrorCodes process_file_internal(std::ifstream &fin, std::ofstream &fout,
     size_t buff_length = 0;
     char buf[MAX_BUFF_SIZE] {};
 
-    uint32_t colon_separators_starts = 0;
+    uint32_t colon_operators_starts = 0;
     int dict_or_set_init_starts = 0;
     int list_or_index_init_starts = 0;
     uint32_t lines_count = 1;
@@ -468,14 +468,16 @@ static ErrorCodes process_file_internal(std::ifstream &fin, std::ofstream &fout,
 #endif
         
         if (is_colon_operator(buf, buff_length)) {
-            ++colon_separators_starts;
+            if (!contains_colon_symbol) {
+                ++colon_operators_starts;
+            }
             goto write_buf;
         }
 
         if (contains_colon_symbol)
         {// Probably type hint started.
-            if (colon_separators_starts != 0) {
-                --colon_separators_starts;
+            if (colon_operators_starts != 0) {
+                --colon_operators_starts;
                 goto write_buf;
             }
             if (is_in_initialization_context) {
@@ -527,10 +529,11 @@ static ErrorCodes process_file_internal(std::ifstream &fin, std::ofstream &fout,
 
             if (is_debug_mode) {
                 printf(
-                    "Line: %u;\nTerm: '%s'; Buff length: %llu;\n'{' - '}' on line count: %d;\n'[' - ']' on line count: %d;\n'{' counts: %d\n'[' counts: %d\n\n",
+                    "Line: %u;\nTerm: '%s'; Buff length: %llu;\nColon colon operators starts: %u\n'{' - '}' on line count: %d;\n'[' - ']' on line count: %d;\n'{' counts: %d\n'[' counts: %d\n\n",
                     lines_count,
                     buf,
                     buff_length,
+                    colon_operators_starts,
                     dict_or_set_open_minus_close_symbols_before_colon_count,
                     list_or_index_open_minus_close_symbols_before_colon_count,
                     dict_or_set_init_starts,
@@ -579,7 +582,8 @@ static inline std::string gen_random_filename() {
     std::string tmp_s;
     tmp_s.reserve(length + sizeof("_tmp.py"));
 
-    std::srand((uint32_t)(std::time(0) ^ std::rand()));
+    // std::srand((uint32_t)(std::time(0) ^ std::rand()));
+    std::srand((uint32_t)(std::rand()));
     for (size_t i = 0; i != length; ++i) {
         tmp_s += alphanum[std::rand() % (sizeof(alphanum) - 1)];
     }
