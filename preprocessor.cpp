@@ -323,6 +323,7 @@ static ErrorCodes process_file_internal(std::ifstream &fin, std::ofstream &fout,
 
             while (true)
             {// Go through function pararms.
+                bool arg_without_typehint = false;
                 while ((curr_char = fin.get()) != -1) {
                     if (curr_char == ':')
                     {// typehint started
@@ -335,8 +336,13 @@ static ErrorCodes process_file_internal(std::ifstream &fin, std::ofstream &fout,
 
                     Check_BuffLen(buff_length)
                     buf[buff_length++] = (char)curr_char;
+
                     
-                    if (curr_char == '\n' || curr_char == '\r') {
+                    if (curr_char == '=')
+                    {// Function argument default value initialization.
+                        arg_without_typehint = true;
+                        break;
+                    } else if (curr_char == '\n' || curr_char == '\r') {
                         ++late_line_increase_counter;
                     }
                 }
@@ -346,7 +352,7 @@ static ErrorCodes process_file_internal(std::ifstream &fin, std::ofstream &fout,
                     "Got EOF instead of function argument type hint at line %u\n",
                     lines_count
                 )
-               
+
                 while ((curr_char = fin.get()) != -1) {
                     if (curr_char == ',')
                     {// Current function arg ended.
@@ -355,12 +361,16 @@ static ErrorCodes process_file_internal(std::ifstream &fin, std::ofstream &fout,
                         break;
                     }
 
-                    if (curr_char == '\n' || curr_char == '\r') {
-                        ++late_line_increase_counter;
-                    }
-
                     if (curr_char == ')') {
                         goto function_params_initialization_end;
+                    }
+
+                    if (arg_without_typehint) {
+                        buf[buff_length++] = (char)curr_char;
+                    }
+
+                    if (curr_char == '\n' || curr_char == '\r') {
+                        ++late_line_increase_counter;
                     }
                 }
                 AssertWithArgs(
