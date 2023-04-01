@@ -28,7 +28,7 @@ static_assert((MAX_BUFF_SIZE & (MAX_BUFF_SIZE - 1)) == 0);
     static_assert(std::is_same<decltype(buff_length), size_t>::value); \
     if ((buff_length + (size_t)additional_reserve) & (~(MAX_BUFF_SIZE - 1))) {\
         if ((preprocessor_flags & PreprocessorFlags::verbose) != PreprocessorFlags::no_flags) {\
-            std::clog << "Max buffer size is reached\n";\
+            std::clog << "Max buffer size is reached at line " << lines_count << '\n';\
         }\
         if ((preprocessor_flags & PreprocessorFlags::stop_on_error) != PreprocessorFlags::no_flags) {\
             return ErrorCodes::preprocessor_line_buffer_overflow;\
@@ -77,7 +77,8 @@ static inline bool count_symbols(const char *buf, const size_t length, std::vect
         {// This string is part of the type hint.
             if (curr_char == '\'' || curr_char == '\"')
             {// Only '\'' or '\"' chars can close / open string
-                if (curr_char != string_opening_char) {
+                if (curr_char != string_opening_char)
+                {// Context is "'... or '"...
                     continue;
                 }
 
@@ -296,32 +297,128 @@ process_file_internal(
     bool is_string_opened = false;
     bool is_long_string_opened = false;
     char string_opening_char = '\0';
+    uint32_t late_line_increase_counter = 0;
         
     while ((curr_char = fin.get()) != -1) {
-        uint32_t late_line_increase_counter = 0;
-
         if (is_not_delim(curr_char) || is_string_opened) {
-            if (curr_char == '\'' || curr_char == '\"')
-            {// Only '\'' or '\"' chars can close / open string
-                if (is_string_opened) {
-                    is_string_opened = !(curr_char == string_opening_char); // If they are equal, string will be closed
-                    if (!is_string_opened)
-                    {// If string was closed now
+            Check_BuffLen(buff_length)
+            if (lines_count == 6) {
+                std::cout << "asb\n";
+            }
+            buf[buff_length++] = (char)curr_char;
+
+            if (is_string_opened)
+            {// This string is part of the type hint.
+                if (curr_char == '\'' || curr_char == '\"')
+                {// Only '\'' or '\"' chars can close / open string
+                    if (curr_char != string_opening_char)
+                    {// Context is "'... or '"...
+                        continue;
+                    }
+
+                    // Current char is equal to the char that opened the string.
+
+                    if (!is_long_string_opened)
+                    {// Context is in the string like 'data' or "data"
+                        is_string_opened = false;
+                        string_opening_char = '\0';
+                    } else
+                    {// Context is like """data"... or '''data'...
+                        curr_char = fin.get();
+                        AssertWithArgs(
+                            curr_char != -1,
+                            ErrorCodes::function_return_type_hint_parse_error,
+                            "Got EOF while reading string at line %u. String was not closed.\n",
+                            lines_count
+                        )
+                        Check_BuffLen_Reserve(buff_length, 3)
+                        buf[buff_length++] = (char)curr_char;
+
+                        if (curr_char != string_opening_char)
+                        {// Context is """data"some_char... or '''data'some_char...
+                            if (curr_char == '\n' || curr_char == '\r') { ++late_line_increase_counter; }
+                            continue;
+                        }
+
+                        // Context is """data""... or '''data''...
+
+                        curr_char = fin.get();
+                        AssertWithArgs(
+                            curr_char != -1,
+                            ErrorCodes::function_return_type_hint_parse_error,
+                            "Got EOF while reading string at line %u. String was not closed.\n",
+                            lines_count
+                        )
+                        buf[buff_length++] = (char)curr_char;
+
+                        if (curr_char != string_opening_char)
+                        {// Context is """data""some_char... or '''data''some_char...
+                            if (curr_char == '\n' || curr_char == '\r') { ++late_line_increase_counter; }
+                            continue;
+                        }
+
+                        // Context is """data"""... or '''data'''...
+                        is_string_opened = false;
+                        is_long_string_opened = false;
                         string_opening_char = '\0';
                     }
                 }
-                else {
-                    is_string_opened = true;
-                    string_opening_char = curr_char;
-                }
+                continue;
             }
 
-            Check_BuffLen(buff_length)
-            buf[buff_length++] = (char)curr_char;
+            if (curr_char == '\'' || curr_char == '\"')
+            {// Context is "... or '...
+                is_string_opened = true;
+                string_opening_char = curr_char;
+
+                curr_char = fin.get();
+                AssertWithArgs(
+                    curr_char != -1,
+                    ErrorCodes::function_return_type_hint_parse_error,
+                    "Got EOF while reading opened string at line %u\n",
+                    lines_count
+                )
+                Check_BuffLen(buff_length)
+                buf[buff_length++] = (char)curr_char;
+
+                if (curr_char != string_opening_char)
+                {// Context is "some_char... or 'some_char...
+                    if (curr_char == '\n' || curr_char == '\r') { ++late_line_increase_counter; }
+                    continue;
+                }
+
+                // Context is ""... or ''...
+
+                curr_char = fin.get();
+                if (curr_char == -1)
+                {// File ended.
+                    break;
+                }
+                Check_BuffLen(buff_length)
+                buf[buff_length++] = (char)curr_char;
+
+                if (curr_char == string_opening_char)
+                {// Context is """... or '''...
+                    is_long_string_opened = true;
+                    is_string_opened = true;
+                } else
+                {// Context is ""some_char... or ''some_char...
+                    is_long_string_opened = false;
+                    is_string_opened = false;
+                    if (curr_char == '\n' || curr_char == '\r') { ++late_line_increase_counter; }
+                }
+
+                continue;
+            }
+            else if (curr_char == '\n' || curr_char == '\r') {
+                ++late_line_increase_counter;
+            }
+
             continue;
         }
         if (curr_char == '\n' || curr_char == '\r') { ++late_line_increase_counter; }
-
+        is_long_string_opened = false;
+        is_string_opened = false;
 #ifdef _MSC_VER
 #pragma region Special_symbols_counting
 #endif
@@ -345,14 +442,15 @@ process_file_internal(
         const size_t colon_index = contains_colon_symbol ? colon_symbols_indexes[0] : buff_length;
 
         const bool is_in_initialization_context = (dict_or_set_init_starts > 0) || (list_or_index_init_starts > 0);
+        const bool brackets_can_be_after_colon_symbol = contains_colon_symbol && !is_in_initialization_context;
 
         const int dict_or_set_open_symbols_before_colon_count =
-            contains_colon_symbol && !is_in_initialization_context
+            brackets_can_be_after_colon_symbol
             ? (int)(bin_search_elem_index_less_then_elem(ds_open_symbols_indexes, colon_index) + 1)
             : (int)ds_open_symbols_indexes.size();
         
         const int dict_or_set_close_symbols_before_colon_count =
-            contains_colon_symbol && !is_in_initialization_context
+            brackets_can_be_after_colon_symbol
             ? (int)(bin_search_elem_index_less_then_elem(ds_close_symbols_indexes, colon_index) + 1)
             : (int)ds_close_symbols_indexes.size();
 
@@ -360,12 +458,12 @@ process_file_internal(
             dict_or_set_open_symbols_before_colon_count - dict_or_set_close_symbols_before_colon_count;
 
         const int list_or_index_open_symbols_before_colon_count = 
-            contains_colon_symbol && !is_in_initialization_context
+            brackets_can_be_after_colon_symbol
             ? (int)(bin_search_elem_index_less_then_elem(li_open_symbols_indexes, colon_index) + 1)
             : (int)li_open_symbols_indexes.size();
 
         const int list_or_index_close_symbols_before_colon_count =
-            contains_colon_symbol && !is_in_initialization_context
+            brackets_can_be_after_colon_symbol
             ? (int)(bin_search_elem_index_less_then_elem(li_close_symbols_indexes, colon_index) + 1)
             : (int)li_close_symbols_indexes.size();
         
@@ -382,7 +480,7 @@ process_file_internal(
 #endif
         if (is_function_defenition(buf, buff_length)) {
             Check_BuffLen(buff_length)
-            buf[buff_length++] = curr_char;
+            buf[buff_length++] = curr_char; // add delimeter char after 'def'. Probably a ' ' of '\\'
             while ((curr_char = fin.get()) != -1) {
                 Check_BuffLen(buff_length)
                 buf[buff_length++] = (char)curr_char;
@@ -604,14 +702,16 @@ process_file_internal(
 
                     if (curr_char == '\'' || curr_char == '\"')
                     {// Only '\'' or '\"' chars can close / open string
-                        if (curr_char != string_opening_char) {
+                        if (curr_char != string_opening_char)
+                        {// Context is "'... or '"...
                             continue;
                         }
 
                         // Current char is equal to the char that opened the string.
+                        // Context is "data"... or 'data'... or """data"... or '''data'...
 
                         if (!is_long_string_opened)
-                        {// Context is in the string like ' data ' or " data "
+                        {// Context is in the string like 'data' or "data"
                             is_string_opened = false;
                             string_opening_char = '\0';
                         } else
@@ -628,7 +728,8 @@ process_file_internal(
                             }
 
                             if (curr_char != string_opening_char)
-                            {// Context is """data"'... or '''data'"...
+                            {// Context is """data"some_char... or '''data'some_char...
+                                if (curr_char == '\n' || curr_char == '\r') { ++late_line_increase_counter; }
                                 continue;
                             }
 
@@ -646,10 +747,12 @@ process_file_internal(
                             }
 
                             if (curr_char != string_opening_char)
-                            {// Context is """data"''... or '''data'""...
+                            {// Context is """data""some_char... or '''data''some_char...
+                                if (curr_char == '\n' || curr_char == '\r') { ++late_line_increase_counter; }
                                 continue;
                             }
 
+                            // Context is """data"""... or '''data'''...
                             is_string_opened = false;
                             is_long_string_opened = false;
                             string_opening_char = '\0';
@@ -658,7 +761,8 @@ process_file_internal(
                     continue;
                 }
 
-                if (curr_char == '\'' || curr_char == '\"') {
+                if (curr_char == '\'' || curr_char == '\"')
+                {// Context is '... or "...
                     if (ignore_function) {
                         Check_BuffLen(buff_length);
                         buf[buff_length++] = (char)curr_char;
@@ -681,7 +785,9 @@ process_file_internal(
                     }
 
                     if (curr_char != string_opening_char)
-                    {// Context is "'... or '"...
+                    {// Context is "some_char... or 'some_char...
+                        if (curr_char == '\n' || curr_char == '\r') { ++late_line_increase_counter; }
+                        is_string_opened = true;
                         continue;
                     }
 
@@ -698,10 +804,12 @@ process_file_internal(
                     if (curr_char == string_opening_char)
                     {// Context is """... or '''...
                         is_long_string_opened = true;
+                        is_string_opened = true;
                     } else
-                    {// Context is "" or ''
+                    {// Context is ""some_char... or ''some_char...
                         is_long_string_opened = false;
                         is_string_opened = false;
+                        if (curr_char == '\n' || curr_char == '\r') { ++late_line_increase_counter; }
                     }
 
                     if (ignore_function) {
@@ -834,6 +942,7 @@ process_file_internal(
             lines_count += late_line_increase_counter;
             is_string_opened = false;
             buff_length = 0;
+            late_line_increase_counter = 0;
 
             continue;
     }
