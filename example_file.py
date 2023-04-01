@@ -3,19 +3,19 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from typing import Literal
 
-lit= ''
+lit: Literal[''] = ''
 s1 = 'a'
-l2= [lit]
-l1= ['a', 'b']
-st1= {'a', "b"}
-d1=\
+l2: list[str] = [lit]
+l1: list[str] = ['a', 'b']
+st1: set[str] = {'a', "b"}
+d1:dict[int, dict[int, int]]=\
     {
     0: {
         0: 0
     },
     1: {1:1}
 }
-d2={
+d2:dict[int, dict[int, int]]={
     0: {
         0: 0
     },
@@ -23,41 +23,41 @@ d2={
 }
 
 def \
-    foo(a, b)\
+    foo(a: int, b: str)\
         :
     return 1
 
 def \
-    g(a, b)   \
-                               \
-                                   \
+    g(a: int, b: str) -> dict[int, \
+                              dict[int, \
+                                   int]]\
         :
     return {0: {}}
 
 
-def h(x = {0: 0}, w = {1: 1}, y= {2: 2}):
+def h(x = {0: 0}, w = {1: 1}, y: dict[int, int] = {2: 2}):
     return x
 
 """"a" : a = a"""
 
 """":" : a = a"""
 
-s="""":" : a = a"""
-s=""": : a = a"""
-s=""": : "a" = a"""
+s:str="""":" : a = a"""
+s:str=""": : a = a"""
+s:str=""": : "a" = a"""
 
-def string(s= """":" : a = a""") \
-         :
+def string(s: Literal["""":" : a = a"""] = """":" : a = a""") \
+        -> Literal['a : a = a']:
     return "a : a = a"
 
-def function_not_to_ignore(a, b, c) \
-         \
+def function_not_to_ignore(a: int, b: set[str], c: memoryview) \
+    -> None | dict[tuple, set[int]] \
     :
         return None or {(1, 2): {1, 2}}
 
 def function_not_to_ignore_2() \
-     \
-        :
+    -> \
+        Literal["""":" : : """]:
     return """":" : : """
 
 def function_to_ignore(a: int, b: set[str], c: memoryview) \
@@ -83,11 +83,12 @@ i in range(10)\
 :
     pass
 
-a= [1] [:]
+a: list[int] = [1] [:]
 
-f = lambda m: m
+f1 = lambda m: m
+f2=lambda x:x*x
 
-num = 10
+num: int = 10
 match num:
     case 10:
         pass

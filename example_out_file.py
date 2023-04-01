@@ -3,9 +3,9 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from typing import Literal
 
-s= ''
+lit= ''
 s1 = 'a'
-l2= [s]
+l2= [lit]
 l1= ['a', 'b']
 st1= {'a', "b"}
 d1=\
@@ -85,9 +85,10 @@ i in range(10)\
 
 a= [1] [:]
 
-f = lambda m: m
+f1 = lambda m: m
+f2=lambda x:x*x
 
-num = 10
+num= 10
 match num:
     case 10:
         pass
