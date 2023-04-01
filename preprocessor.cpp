@@ -302,9 +302,6 @@ process_file_internal(
     while ((curr_char = fin.get()) != -1) {
         if (is_not_delim(curr_char) || is_string_opened) {
             Check_BuffLen(buff_length)
-            if (lines_count == 6) {
-                std::cout << "asb\n";
-            }
             buf[buff_length++] = (char)curr_char;
 
             if (is_string_opened)
@@ -496,11 +493,8 @@ process_file_internal(
                 lines_count
             )
 
-            std::string func_name;
-            /*An identifier can have a maximum length of 79 characters in Python.*/
-            func_name.reserve(79);
-            func_name += (char)curr_char;
-            
+            const size_t function_name_start_index = buff_length - 1;
+
             // Read function name.
             while ((curr_char = fin.get()) != -1) {
                 Check_BuffLen(buff_length)
@@ -508,9 +502,6 @@ process_file_internal(
                 if (curr_char == '(') {
                     break;
                 }
-
-                func_name += (char)curr_char;
-
                 AssertWithArgs(
                     (curr_char != '\n' && curr_char != '\r'),
                     ErrorCodes::function_name_parse_error,
@@ -524,6 +515,10 @@ process_file_internal(
                 "Got EOF instead of function name at line %u\n",
                 lines_count
             )
+
+            buf[buff_length - 1] = '\0';
+            const std::string func_name(buf + function_name_start_index);
+            buf[buff_length - 1] = '(';
 
             const bool ignore_function = ignored_functions.contains(func_name);
             if (ignore_function) {
