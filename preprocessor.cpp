@@ -66,6 +66,8 @@ static inline void count_symbols(const char *buf, const size_t length, std::vect
     bool is_string_opened = false;
     bool is_long_string_opened = false;
     char string_opening_char = '\0'; // will be either '\'' or '\"'
+    int opened_curly_brackets = 0;
+    int opened_square_brackets = 0;
 
     for (size_t i = 0; i != length; ++i) {
         const char curr_char = buf[i];
@@ -102,21 +104,25 @@ static inline void count_symbols(const char *buf, const size_t length, std::vect
             string_opening_char = curr_char;
             continue;
         case ':':
-            if (i + 1 == length || buf[i + 1] != '=')
+            if (opened_square_brackets <= 0 && opened_curly_brackets <= 0 && (i + 1 == length || buf[i + 1] != '='))
             {// walrus operator a := 10
                 symbols_indexes[0].push_back(i);
             }
             continue;
         case '{':
+            ++opened_curly_brackets;
             symbols_indexes[1].push_back(i);
             continue;
         case '}':
+            --opened_curly_brackets;
             symbols_indexes[2].push_back(i);
             continue;
         case '[':
+            ++opened_square_brackets;
             symbols_indexes[3].push_back(i);
             continue;
         case ']':
+            --opened_square_brackets;
             symbols_indexes[4].push_back(i);
             continue;
         }
@@ -165,11 +171,22 @@ static inline constexpr bool is_colon_operator(const char *buf, const size_t len
         return ((length == 6) || (length == 7 && buf[6] == ':')) &&
             (buf[1] == 'a' && buf[2] == 'm' && buf[3] == 'b' && buf[4] == 'd' && buf[5] == 'a');
     case 'w':
+        if (length == 4) {
+            return (buf[1] == 'i' && buf[2] == 't' && buf[3] == 'h');
+        }
+
         return ((length == 5) &&
             (buf[1] == 'h' && buf[2] == 'i' && buf[3] == 'l' && buf[4] == 'e'));
     case 'c':
+        if (length == 4) {
+            return  (buf[1] == 'a' && buf[2] == 's' && buf[3] == 'e');
+        }
+
         return ((length == 5) &&
             (buf[1] == 'l' && buf[2] == 'a' && buf[3] == 's' && buf[4] == 's'));
+    case 'm':
+        return  ((length == 5) &&
+            (buf[1] == 'a' && buf[2] == 't' && buf[3] == 'c' && buf[4] == 'h'));
     default:
         return false;
     }
@@ -306,7 +323,13 @@ process_file_internal(
         const auto &li_close_symbols_indexes = symbols_indexes[4];
 
         const size_t colon_indexes_count = colon_symbols_indexes.size();
-        Assert(colon_indexes_count <= 1, "More then one ':' symbol (not walrus operator ':=') in one term is not supported", ErrorCodes::too_much_colon_symbols);
+        AssertWithArgs(
+            colon_indexes_count <= 1,
+            ErrorCodes::too_much_colon_symbols,
+            "More then one ':' symbol (not walrus operator ':=') in one term is not supported\nCurrent term is '%s' at line %u\n",
+            buf,
+            lines_count
+        )
         const bool contains_colon_symbol = colon_indexes_count != 0;
         const size_t colon_index = contains_colon_symbol ? colon_symbols_indexes[0] : buff_length;
 
