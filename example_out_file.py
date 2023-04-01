@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from typing import Literal
+    from typing import Literal, Callable
 
 lit= ''
 s1 = 'a'
@@ -99,3 +99,9 @@ match num:
 
 with open("example_file.py") as f:
     print(f.newlines)
+
+def fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff()  :
+    return
+
+def ignored_ignored_ignored_ignored_ignored_ignored_ignored_ignored_ignored_ignored_ignored_ignored_function() -> Callable[..., Literal[1234567890]]:
+    return lambda x: 1234567890
