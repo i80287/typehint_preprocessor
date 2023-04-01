@@ -84,3 +84,14 @@ i in range(10)\
     pass
 
 a= [1] [:]
+
+f = lambda m: m
+
+num = 10
+match num:
+    case 10:
+        pass
+    case 20:
+        pass
+    case 30:
+        pass
