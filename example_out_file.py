@@ -95,3 +95,6 @@ match num:
         pass
     case 30:
         pass
+
+with open("example_file.py") as f:
+    print(f.newlines)
