@@ -62,7 +62,8 @@ static_assert((MAX_BUFF_SIZE & (MAX_BUFF_SIZE - 1)) == 0);
         }\
     }\
 
-static inline void count_symbols(const char *buf, const size_t length, std::vector<size_t> *symbols_indexes) {
+static inline bool count_symbols(const char *buf, const size_t length, std::vector<size_t> *symbols_indexes) {
+    bool contains_lambda = false;
     bool is_string_opened = false;
     bool is_long_string_opened = false;
     char string_opening_char = '\0'; // will be either '\'' or '\"'
@@ -125,8 +126,20 @@ static inline void count_symbols(const char *buf, const size_t length, std::vect
             --opened_square_brackets;
             symbols_indexes[4].push_back(i);
             continue;
+        case '=':
+            if ((i + 6 < length) && buf[i + 1] == 'l') {
+                if ((buf[i + 2] == 'a') & (buf[i + 3] == 'm') & (buf[i + 4] == 'b') & (buf[i + 5] == 'd') & (buf[i + 6] == 'a')) {
+                    if (i + 7 == length || (i + 8 == length && buf[i + 7] == ':'))
+                    {// foo=lambda or foo=lambda:
+                        contains_lambda = true;
+                    }
+                }
+            }
+            continue;
         }
     }
+
+    return contains_lambda;
 }
 
 static inline constexpr void clear_symbols_vects(std::vector<size_t> *symbols_indexes) {
@@ -157,8 +170,8 @@ static inline constexpr bool is_colon_operator(const char *buf, const size_t len
                 return false;
             }
 
-            char c2 = buf[2];
-            char c3 = buf[3];
+            const char c2 = buf[2];
+            const char c3 = buf[3];
             if (c2 == 's' && c3 == 'e') {
                 return (length == 4) || (buf[4] == ':');
             }
@@ -307,14 +320,12 @@ process_file_internal(
             buf[buff_length++] = (char)curr_char;
             continue;
         }
-        if (curr_char == '\n' || curr_char == '\r') {
-            ++late_line_increase_counter;
-        }
+        if (curr_char == '\n' || curr_char == '\r') { ++late_line_increase_counter; }
 
 #ifdef _MSC_VER
 #pragma region Special_symbols_counting
 #endif
-        count_symbols(buf, buff_length, symbols_indexes);
+        const bool contains_lambda = count_symbols(buf, buff_length, symbols_indexes);
 
         const auto &colon_symbols_indexes = symbols_indexes[0];
         const auto &ds_open_symbols_indexes = symbols_indexes[1];
@@ -378,9 +389,7 @@ process_file_internal(
                 if (!is_function_accepted_space(curr_char)) {
                     break;
                 }
-                if (curr_char == '\n' || curr_char == '\r') {
-                    ++late_line_increase_counter;
-                }
+                if (curr_char == '\n' || curr_char == '\r') { ++late_line_increase_counter; }
             }
             AssertWithArgs(
                 curr_char != -1,
@@ -424,7 +433,8 @@ process_file_internal(
                     if (curr_char == ')') {
                         goto function_params_initialization_end;
                     }
-                    
+                    if (curr_char == '\n' || curr_char == '\r') { ++late_line_increase_counter; }
+
                     Check_BuffLen(buff_length)
                     buf[buff_length++] = (char)curr_char;
                 }
@@ -538,9 +548,7 @@ process_file_internal(
                     break;
                 }
 
-                if (curr_char == '\n' || curr_char == '\r') {
-                    ++late_line_increase_counter;
-                }
+                if (curr_char == '\n' || curr_char == '\r') { ++late_line_increase_counter; }
 
                 Check_BuffLen(buff_length);
                 buf[buff_length++] = (char)curr_char;
@@ -706,9 +714,7 @@ process_file_internal(
                     Check_BuffLen(buff_length);
                     buf[buff_length++] = curr_char;
                     
-                    if (curr_char == '\n' || curr_char == '\r') {
-                        ++late_line_increase_counter;
-                    }
+                    if (curr_char == '\n' || curr_char == '\r') { ++late_line_increase_counter; }
 
                     continue;
                 }
@@ -735,7 +741,7 @@ process_file_internal(
 #ifdef _MSC_VER
 #pragma endregion Function_parsing
 #endif
-        if (is_colon_operator(buf, buff_length)) {
+        if (is_colon_operator(buf, buff_length) || contains_lambda) {
             if (!contains_colon_symbol) {
                 ++colon_operators_starts;
             }
@@ -754,8 +760,11 @@ process_file_internal(
 
             if ((dict_or_set_open_minus_close_symbols_before_colon_count <= 0) && (list_or_index_open_minus_close_symbols_before_colon_count <= 0)) {
                 size_t typing_end_index = colon_index;
-                while ((++typing_end_index != buff_length) && is_not_typehint_end(buf[typing_end_index]))
-                    ;
+                int typehint_iter_char = '\0';
+                while ((++typing_end_index != buff_length) && is_not_typehint_end(typehint_iter_char = buf[typing_end_index]))
+                {// Skip type hint.
+                    if (typehint_iter_char == '\n' || typehint_iter_char == '\r') { ++late_line_increase_counter; }
+                }
                 
                 if (typing_end_index != buff_length)
                 {// st:set[int]= {}
@@ -764,9 +773,7 @@ process_file_internal(
                 } else {
                     while (((curr_char = fin.get()) != -1) && is_not_typehint_end(curr_char))
                     {/*Skip stream untill '=' e.g. type hint end */
-                        if (curr_char == '\n' || curr_char == '\r') {
-                            ++late_line_increase_counter;
-                        }
+                        if (curr_char == '\n' || curr_char == '\r') { ++late_line_increase_counter; }
                     }
                     AssertWithArgs(
                         curr_char != -1,
@@ -795,7 +802,7 @@ process_file_internal(
             dict_or_set_init_starts += dict_or_set_open_minus_close_symbols_before_colon_count;
             list_or_index_init_starts += list_or_index_open_minus_close_symbols_before_colon_count;
 
-            if (is_debug_mode) {
+            if ((is_debug_mode || (480 <= lines_count && lines_count <= 490)) && buff_length != 0) {
                 printf(
                     "Line: %u;\nTerm: '%s'; Buff length: %llu;\nColon colon operators starts: %u\n'{' - '}' on line count: %d;\n'[' - ']' on line count: %d;\n'{' counts: %d\n'[' counts: %d\n\n",
                     lines_count,
