@@ -4,6 +4,8 @@ if TYPE_CHECKING:
     from typing import Literal, Callable
 
 lit: Literal[''] = ''
+lit1 : Literal["""":" """ # comment
+               ] = """":" """
 s1 = 'a'
 l2: list[str] = [lit]
 l1: list[str] = ['a', 'b']
@@ -106,7 +108,13 @@ def ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 def ignored_ignored_ignored_ignored_ignored_ignored_ignored_ignored_ignored_ignored_ignored_ignored_function() -> Callable[..., Literal[1234567890]]:
     return lambda x: 1234567890
 
-def true_func(a: dict) -> Literal[True]:
+def true_func\
+                \
+                    \
+                        \
+                            \
+                                \
+    (a: dict) -> Literal[True]:
     return True
 
 if true_func({1: 1}):
@@ -121,10 +129,12 @@ class Foo:
 def complex_func(
     a: Foo = Foo(
         arg1=38,
-        arg2=42,
+        arg2=42, ###
         arg3=308,
-        arg4={"""":" """: """":" """},
-        arg5="abc",
+        arg4={"""":" """: """":" """}, # some comment
+        arg5="abc",#other comment " """ '' "" #''"': ::;" :';: :#;; ":;L""; ; ""\##
+        \
+        \
         arg6="""":" """
     )
 ) -> Foo:
