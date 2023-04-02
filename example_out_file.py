@@ -46,7 +46,7 @@ s="""":" : a = a"""
 s=""": : a = a"""
 s=""": : "a" = a"""
 
-def string(s= """":" : a = a""") \
+def string(s= """:" : a = a""") \
          :
     return "a : a = a"
 
@@ -60,7 +60,7 @@ def function_not_to_ignore_2() \
         :
     return """":" : : """
 
-def function_to_ignore(a: int, b: set[str], c: memoryview) \
+def function_to_ignore(a, b, c) \
     -> None | dict[tuple, set[int]] \
     :
         return None or {(1, 2): {1, 2}}
@@ -113,3 +113,17 @@ if true_func({1: 1}):
     print("Indeed")
 
 foo_clone= foo
+
+class Foo:
+    def __init__(self, arg1, arg2, arg3,arg4)  :
+        pass
+
+def complex_func(
+    a= Foo(
+        arg1=38,
+        arg2=42,
+        arg3=308,
+        arg4={""":" """: """:" """}
+    )
+)  :
+    return a

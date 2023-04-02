@@ -113,3 +113,17 @@ if true_func({1: 1}):
     print("Indeed")
 
 foo_clone: Callable[..., Literal[1]] = foo
+
+class Foo:
+    def __init__(self, arg1: int, arg2: int, arg3: int,arg4: dict[str, str]) -> None:
+        pass
+
+def complex_func(
+    a: Foo = Foo(
+        arg1=38,
+        arg2=42,
+        arg3=308,
+        arg4={"""":" """: """":" """}
+    )
+) -> Foo:
+    return a

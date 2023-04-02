@@ -17,22 +17,27 @@ enum class PreprocessorFlags : uint32_t {
 };
 
 enum class ErrorCodes : uint32_t {
-    no_errors                               = 0b000000000000000,
-    preprocessor_line_buffer_overflow       = 0b000000000000001,
-    function_parse_error                    = 0b000000000000010,
-    function_name_parse_error               = 0b000000000000100 | 0b000000000000010,
-    function_argument_type_hint_parse_error = 0b000000000001000 | 0b000000000000010,
-    function_return_type_hint_parse_error   = 0b000000000010000 | 0b000000000000010,
-    unexpected_eof                          = 0b000000000100000,
-    too_much_colon_symbols                  = 0b000000001000000,
-    too_much_closing_curly_brackets         = 0b000000010000000,
-    too_much_closing_square_brackets        = 0b000000100000000,
-    src_file_open_error                     = 0b000001000000000,
-    src_file_io_error                       = 0b000010000000000,
-    tmp_file_open_error                     = 0b000100000000000,
-    tmp_file_delete_error                   = 0b001000000000000,
-    overwrite_error                         = 0b010000000000000,
-    single_file_process_error               = 0b100000000000000, /* Can only occur while processing many files at once. */
+    no_errors                               = 1 >> 1,
+    preprocessor_line_buffer_overflow       = 1 << 0,
+    function_parse_error                    = 1 << 1,
+    function_name_parse_error               = 1 << 2 | function_parse_error,
+    function_argument_parse_error           = 1 << 3 | function_parse_error,
+    function_argument_type_hint_parse_error = 1 << 4 | function_argument_parse_error,
+    function_return_type_hint_parse_error   = 1 << 5 | function_parse_error,
+    unexpected_eof                          = 1 << 6,
+    too_much_colon_symbols                  = 1 << 7,
+    too_much_closing_curly_brackets         = 1 << 8,
+    too_much_closing_square_brackets        = 1 << 9,
+    too_much_closing_round_brackets         = 1 << 10,
+    too_few_closing_square_brackets         = 1 << 11,
+    too_few_closing_round_brackets          = 1 << 12,
+    string_not_closed_error                 = 1 << 13,
+    src_file_open_error                     = 1 << 14,
+    src_file_io_error                       = 1 << 15,
+    tmp_file_open_error                     = 1 << 16,
+    tmp_file_delete_error                   = 1 << 17,
+    overwrite_error                         = 1 << 18,
+    single_file_process_error               = 1 << 19, /* Can only occur while processing many files at once. */
 };
 
 inline constexpr ErrorCodes

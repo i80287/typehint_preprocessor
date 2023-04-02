@@ -517,109 +517,210 @@ process_file_internal(
             const bool ignore_function = ignored_functions.contains(buf + function_name_start_index);
             buf[buff_length - 1] = '(';
 
-            if (ignore_function) {
-                while ((curr_char = fin.get()) != -1) {
-                    if (curr_char == ')') {
-                        goto function_params_initialization_end;
+            // Go through function params.
+            uint32_t opened_round_brackets = 1;
+            uint32_t opened_square_brackets = 0;
+            is_string_opened = false;
+            is_long_string_opened = false;
+            string_opening_char = '\0'; // will be either '\'' or '\"'
+            bool default_value_initialization_started = false;
+            bool should_write_to_buf = true;
+
+            function_arg_ended:
+            default_value_initialization_started = false;
+            should_write_to_buf = true;
+            AssertWithArgs(
+                !is_string_opened,
+                ErrorCodes::string_not_closed_error | ErrorCodes::function_argument_parse_error,
+                "Function argument ended but opened string was not closed %u",
+                lines_count
+            )
+
+            while ((curr_char = fin.get()) != -1) {
+                if (is_string_opened)
+                {// This string is part of the type hint.
+                    if (should_write_to_buf) {
+                        Check_BuffLen_Reserve(buff_length, 3)
+                        buf[buff_length++] = (char)curr_char;
                     }
-                    if (curr_char == '\n' || curr_char == '\r') { ++late_line_increase_counter; }
 
-                    Check_BuffLen(buff_length)
-                    buf[buff_length++] = (char)curr_char;
-                }
-                AssertWithArgs(
-                    false,
-                    ErrorCodes::function_parse_error,
-                    "Got EOF instead of ignored function args, body or return type at line %u\n",
-                    lines_count
-                )
-                continue;               
-            }
-
-            while (true)
-            {// Go through function params.
-                function_arg_ended:
-                bool typehint_started = false;
-                bool default_value_initialization_started = false;
-                is_string_opened = false;
-                char string_opening_char = '\0'; // will be either '\'' or '\"'
-                uint32_t opened_square_brackets = 0;
-
-                while ((curr_char = fin.get()) != -1) {
-                    if (is_string_opened && !default_value_initialization_started)
-                    {// This string is part of the type hint.
-                        if (curr_char == '\'' || curr_char == '\"')
-                        {// Only '\'' or '\"' chars can close / open string
-                            is_string_opened = !(curr_char == string_opening_char); // If they are equal, string will be closed
-                            if (!is_string_opened)
-                            {// If string was closed now
-                                string_opening_char = '\0';
-                            }
+                    if (curr_char == '\'' || curr_char == '\"')
+                    {// Only '\'' or '\"' chars can close / open string
+                        if (curr_char != string_opening_char)
+                        {// Context is "'... or '"...
+                            continue;
                         }
+
+                        // Current char is equal to the char that opened the string.
+
+                        if (!is_long_string_opened)
+                        {// Context is in the string like 'data' or "data"
+                            is_string_opened = false;
+                            string_opening_char = '\0';
+                        } else
+                        {// Context is like """data"... or '''data'...
+                            curr_char = fin.get();
+                            AssertWithArgs(
+                                curr_char != -1,
+                                ErrorCodes::function_return_type_hint_parse_error,
+                                "Got EOF while reading string at line %u. String was not closed.\n",
+                                lines_count
+                            )
+                            
+                            if (should_write_to_buf) {
+                                buf[buff_length++] = (char)curr_char;
+                            }
+
+                            if (curr_char != string_opening_char)
+                            {// Context is """data"some_char... or '''data'some_char...
+                                if (curr_char == '\n' || curr_char == '\r') { ++late_line_increase_counter; }
+                                continue;
+                            }
+
+                            // Context is """data""... or '''data''...
+
+                            curr_char = fin.get();
+                            AssertWithArgs(
+                                curr_char != -1,
+                                ErrorCodes::function_return_type_hint_parse_error,
+                                "Got EOF while reading string at line %u. String was not closed.\n",
+                                lines_count
+                            )
+                            if (should_write_to_buf) {
+                                buf[buff_length++] = (char)curr_char;
+                            }
+
+                            if (curr_char != string_opening_char)
+                            {// Context is """data""some_char... or '''data''some_char...
+                                if (curr_char == '\n' || curr_char == '\r') { ++late_line_increase_counter; }
+                                continue;
+                            }
+
+                            // Context is """data"""... or '''data'''...
+                            is_string_opened = false;
+                            is_long_string_opened = false;
+                            string_opening_char = '\0';
+                        }
+                    }
+                    continue;
+                }
+
+                switch (curr_char) {
+                case '\'':
+                case '\"':
+                    // Context is "... or '...
+                    is_string_opened = true;
+                    string_opening_char = curr_char;
+
+                    curr_char = fin.get();
+                    AssertWithArgs(
+                        curr_char != -1,
+                        ErrorCodes::function_return_type_hint_parse_error,
+                        "Got EOF while reading opened string at line %u\n",
+                        lines_count
+                    )
+                    
+                    if (should_write_to_buf) {
+                        Check_BuffLen_Reserve(buff_length, 2)
+                        buf[buff_length++] = (char)curr_char;
+                    }
+
+                    if (curr_char != string_opening_char)
+                    {// Context is "some_char... or 'some_char...
+                        if (curr_char == '\n' || curr_char == '\r') { ++late_line_increase_counter; }
                         continue;
                     }
 
-                    switch (curr_char)
-                    {
-                    case '\'':
-                    case '\"':
-                        is_string_opened = true;
-                        string_opening_char = curr_char;
-                        if (!default_value_initialization_started) {
-                            continue; // Do not write type hint string opening chars to the buffer.
-                        }
-                        break;
-                    case ',':
-                        if (opened_square_brackets == 0)
-                        {// Current function arg ended. Check if we are not in the type hint like dict[int, dict]
-                            Check_BuffLen(buff_length)
-                            buf[buff_length++] = ',';
-                            goto function_arg_ended;
-                        }
-                        break;
-                    case '[':
-                        ++opened_square_brackets;
-                        break;
-                    case ']':
-                        {
-                            AssertWithArgs(
-                                opened_square_brackets != 0,
-                                ErrorCodes::function_argument_type_hint_parse_error, 
-                                "Too much closing square brackets in the function argument type hint at line %u\n",
-                                lines_count
-                            );
-                            --opened_square_brackets;
-                        }
-                        break;
-                    case ')':
-                        goto function_params_initialization_end;
-                    case ':':
-                        if (!default_value_initialization_started) {
-                            typehint_started = true;
-                        }
-                        break;
-                    case '=':
-                        typehint_started = false;
-                        default_value_initialization_started = true;
-                        break;
-                    case '\n':
-                    case '\r':
-                        ++late_line_increase_counter;
-                        break;
-                    }
+                    // Context is ""... or ''...
 
-                    if (!typehint_started) {
-                        Check_BuffLen(buff_length)
+                    curr_char = fin.get();
+                    AssertWithArgs(
+                        curr_char != -1,
+                        ErrorCodes::function_return_type_hint_parse_error,
+                        "Got EOF while reading opened string in the type hint at line %u\n",
+                        lines_count
+                    )
+
+                    if (should_write_to_buf) {
                         buf[buff_length++] = (char)curr_char;
                     }
+
+                    if (curr_char == string_opening_char)
+                    {// Context is """... or '''...
+                        is_long_string_opened = true;
+                        is_string_opened = true;
+                    } else
+                    {// Context is ""some_char... or ''some_char...
+                        is_long_string_opened = false;
+                        is_string_opened = false;
+                        if (curr_char == '\n' || curr_char == '\r') { ++late_line_increase_counter; }
+                    }
+
+                    continue;
+                case ',':
+                    if (opened_square_brackets == 0 && opened_round_brackets == 1)
+                    {// Current function arg ended.
+                     // Check if we are not in the type hint like dict[int, dict] and not in default arg initialization ctor.
+                        Check_BuffLen(buff_length)
+                        buf[buff_length++] = ',';
+                        goto function_arg_ended;
+                    }
+                    break;
+                case '[':
+                    ++opened_square_brackets;
+                    break;
+                case ']':
+                    {
+                        AssertWithArgs(
+                            opened_square_brackets != 0,
+                            ErrorCodes::function_argument_type_hint_parse_error, 
+                            "Too much closing square brackets in the function argument type hint at line %u\n",
+                            lines_count
+                        );
+                        --opened_square_brackets;
+                    }
+                    break;
+                case '(':
+                    ++opened_round_brackets;
+                    break;
+                case ')':
+                    AssertWithArgs(
+                        opened_round_brackets != 0,
+                        ErrorCodes::too_much_closing_round_brackets,
+                        "Too much closing round brackets in the function arguments initialization at line %u",
+                        lines_count
+                    )
+                    if (--opened_round_brackets == 0) {
+                        goto function_params_initialization_end;
+                    }
+                    break;
+                case ':':
+                    if (!default_value_initialization_started)
+                    {// Typehint started.
+                        should_write_to_buf = false;
+                    }
+                    break;
+                case '=':
+                    default_value_initialization_started = true;
+                    should_write_to_buf = true;
+                    break;
+                case '\n':
+                case '\r':
+                    ++late_line_increase_counter;
+                    break;
                 }
-                AssertWithArgs(
-                    curr_char != -1,
-                    ErrorCodes::function_parse_error,
-                    "Got EOF instead of function args, body or return type at line %u\n",
-                    lines_count
-                )
+
+                if (should_write_to_buf) {
+                    Check_BuffLen(buff_length)
+                    buf[buff_length++] = (char)curr_char;
+                }
             }
+            AssertWithArgs(
+                curr_char != -1,
+                ErrorCodes::function_parse_error,
+                "Got EOF instead of function args, body or return type at line %u\n",
+                lines_count
+            )
 
             function_params_initialization_end:           
             Check_BuffLen_Reserve(buff_length, 2)
@@ -676,6 +777,7 @@ process_file_internal(
             )
 
             is_string_opened = false;
+            is_long_string_opened = false;
             string_opening_char = '\0';
 
             if (ignore_function) {
@@ -800,6 +902,7 @@ process_file_internal(
                     {// Context is ""some_char... or ''some_char...
                         is_long_string_opened = false;
                         is_string_opened = false;
+                        string_opening_char = '\0';
                         if (curr_char == '\n' || curr_char == '\r') { ++late_line_increase_counter; }
                     }
 
