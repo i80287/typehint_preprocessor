@@ -11,8 +11,11 @@
 #include <vector>        // vector<>
 #include <type_traits>   // is_same<>
 #include <unordered_set> // unordered_set<>
+#include <filesystem>    // std::filesystem
 
 #include "preprocessor.hpp"
+
+namespace fs = std::filesystem;
 
 using std::size_t;
 using std::uint32_t;
@@ -30,11 +33,7 @@ static_assert((MAX_BUFF_SIZE & (MAX_BUFF_SIZE - 1)) == 0);
         if ((preprocessor_flags & PreprocessorFlags::verbose) != PreprocessorFlags::no_flags) {\
             std::clog << "Max buffer size is reached at line " << lines_count << '\n';\
         }\
-        if ((preprocessor_flags & PreprocessorFlags::stop_on_error) != PreprocessorFlags::no_flags) {\
-            return ErrorCodes::preprocessor_line_buffer_overflow;\
-        } else {\
-            current_state |= ErrorCodes::preprocessor_line_buffer_overflow;\
-        }\
+        return current_state |= ErrorCodes::preprocessor_line_buffer_overflow;\
     }
 
 #define Assert(expression, message, error_code) \
@@ -43,10 +42,9 @@ static_assert((MAX_BUFF_SIZE & (MAX_BUFF_SIZE - 1)) == 0);
         if ((preprocessor_flags & PreprocessorFlags::verbose) != PreprocessorFlags::no_flags) {\
             std::clog << "Assertion error. Error message:\n" << message << '\n';\
         }\
-        if ((preprocessor_flags & PreprocessorFlags::stop_on_error) != PreprocessorFlags::no_flags) {\
-            return error_code;\
-        } else {\
-            current_state |= error_code;\
+        current_state |= error_code;\
+        if ((preprocessor_flags & PreprocessorFlags::continue_on_error) == PreprocessorFlags::no_flags) {\
+            return current_state;\
         }\
     }
 
@@ -55,10 +53,9 @@ static_assert((MAX_BUFF_SIZE & (MAX_BUFF_SIZE - 1)) == 0);
         if ((preprocessor_flags & PreprocessorFlags::verbose) != PreprocessorFlags::no_flags) {\
             fprintf(stderr, __VA_ARGS__);\
         }\
-        if ((preprocessor_flags & PreprocessorFlags::stop_on_error) != PreprocessorFlags::no_flags) {\
-            return error_code;\
-        } else {\
-            current_state |= error_code;\
+        current_state |= error_code;\
+        if ((preprocessor_flags & PreprocessorFlags::continue_on_error) == PreprocessorFlags::no_flags) {\
+            return current_state;\
         }\
     }\
 
@@ -517,10 +514,9 @@ process_file_internal(
             )
 
             buf[buff_length - 1] = '\0';
-            const std::string func_name(buf + function_name_start_index);
+            const bool ignore_function = ignored_functions.contains(buf + function_name_start_index);
             buf[buff_length - 1] = '(';
 
-            const bool ignore_function = ignored_functions.contains(func_name);
             if (ignore_function) {
                 while ((curr_char = fin.get()) != -1) {
                     if (curr_char == ')') {
@@ -962,8 +958,7 @@ static inline std::string gen_random_filename() {
     std::string tmp_s;
     tmp_s.reserve(length + sizeof("_tmp.py"));
 
-    // std::srand((uint32_t)(std::time(0) ^ std::rand()));
-    std::srand((uint32_t)(std::rand()));
+    std::srand((uint32_t)(std::time(0) ^ std::rand()));
     for (size_t i = 0; i != length; ++i) {
         tmp_s += alphanum[std::rand() % (sizeof(alphanum) - 1)];
     }
@@ -1004,21 +999,25 @@ ErrorCodes process_file(
     tmp_fout.close();
 
     if (fin.bad()) {
+        ret_code |= ErrorCodes::src_file_io_error;
         if (is_verbose_mode) {
             std::clog << "Input file stream (src code) got bad bit: 'Error on stream (such as when this function catches an exception thrown by an internal operation).'\n";
-        };
-        ret_code |= ErrorCodes::src_file_io_error;
+        }
         return ret_code;
     }
 
-    if ((preprocessor_flags & PreprocessorFlags::overwrite_file) != PreprocessorFlags::no_flags) {
-        if (ret_code != ErrorCodes::no_errors) {
-            if (is_verbose_mode) {
-                std::clog << "No overwrite made due to errors appeared before\n";
-            }
-            return ret_code;
+    if (ret_code != ErrorCodes::no_errors) {
+        if (is_verbose_mode) {
+            std::clog << "An error occured while processing src file" << input_filename << '\n';
         }
+        return ret_code;
+    }
 
+    if (is_verbose_mode) {
+        std::cout << "Successfully processed src file " << input_filename << '\n';
+    }
+
+    if ((preprocessor_flags & PreprocessorFlags::overwrite_file) != PreprocessorFlags::no_flags) {
         std::ofstream re_fin(input_filename, std::ios::binary | std::ios::trunc);
         std::ifstream re_tmp_fout(tmp_file_name, std::ios::binary);
         
@@ -1042,12 +1041,58 @@ ErrorCodes process_file(
             }
         }
         else {
-            if (is_verbose_mode) {
-                std::cout << "An error occured while deleting tmp file " << tmp_file_name << '\n';
-            }
             ret_code |= ErrorCodes::tmp_file_delete_error;
+            if (is_verbose_mode) {
+                std::clog << "An error occured while deleting tmp file " << tmp_file_name << '\n';
+            }
         }
+    }
+    else if (is_verbose_mode) {
+        std::cout << "Processed version is copied to the " << tmp_file_name << '\n';
     }
 
     return ret_code;
+}
+
+ErrorCodes process_files(
+    const std::unordered_set<std::string> &filenames,
+    const std::unordered_set<std::string> &ignored_functions,
+    const PreprocessorFlags preprocessor_flags
+) {
+    const bool is_verbose_mode = (preprocessor_flags & PreprocessorFlags::verbose) != PreprocessorFlags::no_flags;
+    size_t processed_files = 0;
+    const size_t total_files = filenames.size();
+    ErrorCodes current_state = ErrorCodes::no_errors;
+    
+    for (const auto& filename : filenames) {
+        const bool exists = fs::exists(filename);
+        AssertWithArgs(
+            exists,
+            ErrorCodes::src_file_open_error,
+            "Could not open file %s\n",
+            filename.c_str()
+        )
+        if (!exists) {
+            continue;
+        }
+
+        const ErrorCodes file_process_ret_code = process_file(filename, ignored_functions, preprocessor_flags);
+        ++processed_files;
+        current_state |= file_process_ret_code;
+        const bool no_errors = file_process_ret_code == ErrorCodes::no_errors;
+        AssertWithArgs(
+            no_errors,
+            ErrorCodes::single_file_process_error,
+            "An error occured while processing %llu / %llu file %s\n",
+            processed_files,
+            total_files,
+            filename.c_str()
+        )
+
+        if (is_verbose_mode) {
+            std::cout << processed_files << " / " << total_files << (no_errors ? " file processed successfully\n" : "  file processed with failure\n");
+        }
+    }
+
+    return current_state;
 }
