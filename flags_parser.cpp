@@ -5,13 +5,30 @@
 static inline constexpr PreprocessorFlags parse_flag(const char *arg) {
     switch (arg[0]) {
     case 'd':
-        return (strcmp(++arg, "ebug") == 0) ? PreprocessorFlags::debug : PreprocessorFlags::no_flags;
+        if (strcmp(++arg, "ebug") == 0) {
+            return PreprocessorFlags::debug;
+        }
+        break;
     case 'o':
-        return (strcmp(++arg, "verwrite") == 0) ? PreprocessorFlags::debug : PreprocessorFlags::no_flags;
+        if (strcmp(++arg, "verwrite") == 0) {
+            return PreprocessorFlags::overwrite_file;
+        }
+        break;
     case 'v':
-        return (strcmp(++arg, "erbose") == 0) ? PreprocessorFlags::debug : PreprocessorFlags::no_flags;
+        if (strcmp(++arg, "erbose") == 0) {
+            return PreprocessorFlags::verbose;
+        }
+        break;
     case 'c':
-        return (strcmp(++arg, "ontinue_on_error") == 0) ? PreprocessorFlags::debug : PreprocessorFlags::no_flags;
+        if (strcmp(++arg, "ontinue_on_error") == 0) {
+            return PreprocessorFlags::continue_on_error;
+        }
+        break;
+    case 'a':
+        if (strcmp(++arg, "ll_disabled") == 0) {
+            return PreprocessorFlags::all_disabled;
+        }
+        break;
     }
 
     return PreprocessorFlags::no_flags;

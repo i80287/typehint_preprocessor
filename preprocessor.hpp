@@ -13,7 +13,8 @@ enum class PreprocessorFlags : uint32_t {
     overwrite_file    = 1 << 0,
     verbose           = 1 << 1,
     debug             = 1 << 2,
-    continue_on_error = 1 << 3 /* Not recommended to use. */
+    continue_on_error = 1 << 3, /* Not recommended to use. */
+    all_disabled      = 1 << 4
 };
 
 enum class ErrorCodes : uint32_t {

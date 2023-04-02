@@ -12,6 +12,12 @@ int main(int argc, const char **const argv) {
         "function_to_ignore_2",
         "ignored_ignored_ignored_ignored_ignored_ignored_ignored_ignored_ignored_ignored_ignored_ignored_function"
     };
-    process_files(filenames, ignored_functions, flags);
+
+    if (flags == PreprocessorFlags::no_flags) {
+        process_files(filenames, ignored_functions);
+    } else {
+        process_files(filenames, ignored_functions, flags);
+    }
+
     return 0;
 }
