@@ -611,6 +611,9 @@ process_file_internal(
                     // Context is "... or '...
                     is_string_opened = true;
                     string_opening_char = curr_char;
+                    if (should_write_to_buf) {
+                        buf[buff_length++] = (char)curr_char;
+                    }
 
                     curr_char = fin.get();
                     AssertWithArgs(
