@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from typing import Literal, Callable
+    from typing import Literal, Callable, Dict
 
 lit = ''
 lit1                  = """":" """
@@ -61,14 +61,14 @@ def function_not_to_ignore_2() \
         :
     return """":" : : """
 
-def function_to_ignore(a, b, c) \
-         \
+def function_to_ignore(a: int, b: set[str], c: memoryview) \
+    -> None | dict[tuple, set[int]] \
     :
         return None or {(1, 2): {1, 2}}
 
 def function_to_ignore_2() \
-     \
-        :
+    -> \
+        Literal["""":" : : """]:
     return """":" : : """
 
 try\
@@ -104,7 +104,7 @@ with open("example_file.py") as f:
 def fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff()  :
     return
 
-def ignored_ignored_ignored_ignored_ignored_ignored_ignored_ignored_ignored_ignored_ignored_ignored_function()   :
+def ignored_ignored_ignored_ignored_ignored_ignored_ignored_ignored_ignored_ignored_ignored_ignored_function() -> Callable[..., Literal[1234567890]]:
     return lambda x: 1234567890
 
 def true_func\
@@ -138,3 +138,11 @@ def complex_func(
     )
 )  :
     return a
+
+uninit_var1: int
+
+uninit_var2: \
+    dict[
+    int, int \
+        \
+] | dict[int, int]
