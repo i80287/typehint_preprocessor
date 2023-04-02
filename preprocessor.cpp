@@ -1261,6 +1261,20 @@ process_file_internal(
     return current_state;
 }
 
+std::string generate_tmp_filename(const std::string &filename) {
+    const size_t slash_index = filename.rfind('/');
+    if (slash_index != filename.npos) {
+        return "tmp_" + filename.substr(slash_index + 1);
+    }
+
+    const size_t backslash_index = filename.rfind('\\');
+    if (backslash_index != filename.npos) {
+        return "tmp_" + filename.substr(backslash_index + 1);
+    }
+    
+    return "tmp_" + filename;
+}
+
 ErrorCodes process_file(
     const std::string &input_filename,
     const std::unordered_set<std::string> &ignored_functions,
@@ -1277,7 +1291,7 @@ ErrorCodes process_file(
         return ErrorCodes::src_file_open_error;
     }
 
-    const std::string tmp_file_name = "tmp_" + input_filename;
+    const std::string &tmp_file_name = generate_tmp_filename(input_filename);
     std::ofstream tmp_fout(tmp_file_name, std::ios::out | std::ios::trunc);
     if (!tmp_fout.is_open()) {
         fin.close();
