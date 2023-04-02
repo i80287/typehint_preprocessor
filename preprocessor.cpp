@@ -1323,7 +1323,7 @@ ErrorCodes process_file(
 
     if (ret_code != ErrorCodes::no_errors) {
         if (is_verbose_mode) {
-            std::clog << "An error occured while processing src file" << input_filename << '\n';
+            std::clog << "An error occured while processing src file " << input_filename << '\n';
         }
         return ret_code;
     }

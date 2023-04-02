@@ -1,0 +1,3 @@
+function_to_ignore
+function_to_ignore_2
+ignored_ignored_ignored_ignored_ignored_ignored_ignored_ignored_ignored_ignored_ignored_ignored_function
