@@ -15,8 +15,6 @@
 
 #include "preprocessor.hpp"
 
-namespace fs = std::filesystem;
-
 using std::size_t;
 using std::uint32_t;
 
@@ -1171,7 +1169,7 @@ ErrorCodes process_files(
     ErrorCodes current_state = ErrorCodes::no_errors;
     
     for (const auto& filename : filenames) {
-        const bool exists = fs::exists(filename);
+        const bool exists = std::filesystem::exists(filename);
         AssertWithArgs(
             exists,
             ErrorCodes::src_file_open_error,
