@@ -46,7 +46,7 @@ s="""":" : a = a"""
 s=""": : a = a"""
 s=""": : "a" = a"""
 
-def string(s= """:" : a = a""") \
+def string(s= """":" : a = a""") \
          :
     return "a : a = a"
 
@@ -115,7 +115,7 @@ if true_func({1: 1}):
 foo_clone= foo
 
 class Foo:
-    def __init__(self, arg1, arg2, arg3,arg4)  :
+    def __init__(self, arg1, arg2, arg3,arg4,arg5,arg6)  :
         pass
 
 def complex_func(
@@ -123,7 +123,9 @@ def complex_func(
         arg1=38,
         arg2=42,
         arg3=308,
-        arg4={""":" """: """:" """}
+        arg4={"""":" """: """":" """},
+        arg5="abc",
+        arg6="""":" """
     )
 )  :
     return a

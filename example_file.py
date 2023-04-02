@@ -115,7 +115,7 @@ if true_func({1: 1}):
 foo_clone: Callable[..., Literal[1]] = foo
 
 class Foo:
-    def __init__(self, arg1: int, arg2: int, arg3: int,arg4: dict[str, str]) -> None:
+    def __init__(self, arg1: int, arg2: int, arg3: int,arg4: dict[str, str],arg5:str,arg6:str) -> None:
         pass
 
 def complex_func(
@@ -123,7 +123,9 @@ def complex_func(
         arg1=38,
         arg2=42,
         arg3=308,
-        arg4={"""":" """: """":" """}
+        arg4={"""":" """: """":" """},
+        arg5="abc",
+        arg6="""":" """
     )
 ) -> Foo:
     return a
