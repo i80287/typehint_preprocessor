@@ -17,7 +17,7 @@ using std::size_t;
 using std::uint32_t;
 
 /* must be power of two. */
-static constexpr size_t MAX_BUFF_SIZE = 8192;
+static constexpr size_t MAX_BUFF_SIZE = 2048;
 static_assert((MAX_BUFF_SIZE & (MAX_BUFF_SIZE - 1)) == 0);
 
 #define Check_BuffLen(buff_length) \
@@ -294,7 +294,8 @@ process_file_internal(
     symbols_indexes[4].reserve(8);
 
     size_t buff_length = 0;
-    char *const buf = new char[MAX_BUFF_SIZE];
+    char buf[MAX_BUFF_SIZE] {};
+    char fallback_buffer[MAX_BUFF_SIZE] {};
 
     uint32_t colon_operators_starts = 0;
     int dict_or_set_init_starts = 0;
@@ -391,8 +392,9 @@ process_file_internal(
                 AssertWithArgs(
                     curr_char != -1,
                     ErrorCodes::function_return_type_hint_parse_error,
-                    "Got EOF while reading opened string at line %u\n",
-                    lines_count
+                    "Got EOF while reading opened string at line %u\nCurrent term is '%s'\n",
+                    lines_count,
+                    buf
                 )
                 Check_BuffLen(buff_length)
                 buf[buff_length++] = (char)curr_char;
@@ -479,11 +481,13 @@ process_file_internal(
         const int dict_or_set_open_minus_close_symbols_before_colon_count = 
             dict_or_set_open_symbols_before_colon_count - dict_or_set_close_symbols_before_colon_count;
 
+        const size_t total_list_or_index_open_symbols = li_open_symbols_indexes.size();
         const int list_or_index_open_symbols_before_colon_count = 
             brackets_can_be_after_colon_symbol
             ? (int)(bin_search_elem_index_less_then_elem(li_open_symbols_indexes, colon_index) + 1)
-            : (int)li_open_symbols_indexes.size();
+            : (int)total_list_or_index_open_symbols;
 
+        const size_t total_list_or_index_close_symbols = li_close_symbols_indexes.size();
         const int list_or_index_close_symbols_before_colon_count =
             brackets_can_be_after_colon_symbol
             ? (int)(bin_search_elem_index_less_then_elem(li_close_symbols_indexes, colon_index) + 1)
@@ -514,12 +518,14 @@ process_file_internal(
             AssertWithArgs(
                 curr_char != -1,
                 ErrorCodes::function_parse_error,
-                "Got EOF instead of function name at line %u\n",
-                lines_count
+                "Got EOF instead of function name at line %u\nCurrent term is '%s'\n",
+                lines_count,
+                buf
             )
 
             std::string function_name;
             function_name.reserve(79);
+            function_name += curr_char;
 
             // Read function name.
             while ((curr_char = fin.get()) != -1) {
@@ -562,8 +568,9 @@ process_file_internal(
             AssertWithArgs(
                 curr_char != -1,
                 ErrorCodes::function_name_parse_error,
-                "Got EOF instead of function name at line %u\n",
-                lines_count
+                "Got EOF instead of function name at line %u\nCurrent term is '%s'\n",
+                lines_count,
+                buf
             )
 
             function_name_ended:
@@ -686,8 +693,9 @@ process_file_internal(
                     AssertWithArgs(
                         curr_char != -1,
                         ErrorCodes::function_return_type_hint_parse_error,
-                        "Got EOF while reading opened string at line %u\n",
-                        lines_count
+                        "Got EOF while reading opened string at line %u\nCurrent term is '%s'\n",
+                        lines_count,
+                        buf
                     )
                     
                     if (should_write_to_buf) {
@@ -707,8 +715,9 @@ process_file_internal(
                     AssertWithArgs(
                         curr_char != -1,
                         ErrorCodes::function_return_type_hint_parse_error,
-                        "Got EOF while reading opened string in the type hint at line %u\n",
-                        lines_count
+                        "Got EOF while reading opened string in the type hint at line %u\nCurrent term is '%s'\n",
+                        lines_count,
+                        buf
                     )
 
                     if (should_write_to_buf) {
@@ -753,8 +762,9 @@ process_file_internal(
                     AssertWithArgs(
                         opened_square_brackets != 0,
                         ErrorCodes::function_argument_type_hint_parse_error, 
-                        "Too much closing square brackets in the function argument type hint at line %u\n",
-                        lines_count
+                        "Too much closing square brackets in the function argument type hint at line %u\nCurrent term is '%s'\n",
+                        lines_count,
+                        buf
                     );
                     --opened_square_brackets;
                     break;
@@ -799,8 +809,9 @@ process_file_internal(
             AssertWithArgs(
                 curr_char != -1,
                 ErrorCodes::function_parse_error,
-                "Got EOF instead of function args, body or return type at line %u\n",
-                lines_count
+                "Got EOF instead of function args, body or return type at line %u\nCurrent term is '%s'\n",
+                lines_count,
+                buf
             )
 
             function_params_initialization_end:           
@@ -808,9 +819,10 @@ process_file_internal(
             AssertWithArgs(
                 curr_char == ')',
                 ErrorCodes::function_parse_error,
-                "Expected ')' symbol after function params, got '%c' at line %u\n",
+                "Expected ')' symbol after function params, got '%c' at line %u\nCurrent term is '%s'\n",
                 curr_char,
-                lines_count
+                lines_count,
+                buf
             )
             buf[buff_length++] = ')';
 
@@ -827,8 +839,9 @@ process_file_internal(
             AssertWithArgs(
                 curr_char != -1,
                 ErrorCodes::function_return_type_hint_parse_error,
-                "Got EOF instead of function body or return type at line %u\n",
-                lines_count
+                "Got EOF instead of function body or return type at line %u\nCurrent term is '%s'\n",
+                lines_count,
+                buf
             )
 
             if (curr_char == ':') {
@@ -837,9 +850,10 @@ process_file_internal(
             AssertWithArgs(
                 curr_char == '-',
                 ErrorCodes::function_return_type_hint_parse_error,
-                "Expected '-' symbol for function return type hint construction 'def foo() -> return_type:', got '%c' at line %u\n",
+                "Expected '-' symbol for function return type hint construction 'def foo() -> return_type:', got '%c' at line %u\nCurrent term is '%s'\n",
                 curr_char,
-                lines_count
+                lines_count,
+                buf
             )
             curr_char = fin.get();
             AssertWithArgs(
@@ -851,9 +865,10 @@ process_file_internal(
             AssertWithArgs(
                 curr_char == '>',
                 ErrorCodes::function_return_type_hint_parse_error,
-                "Expected '>' symbol for function return type hint construction 'def foo() -> return_type:', got '%c' at line %u\n",
+                "Expected '>' symbol for function return type hint construction 'def foo() -> return_type:', got '%c' at line %u\nCurrent term is '%s'\n",
                 curr_char,
-                lines_count
+                lines_count,
+                buf
             )
 
             is_comment_opened = false;
@@ -988,8 +1003,9 @@ process_file_internal(
                         AssertWithArgs(
                             curr_char != -1,
                             ErrorCodes::function_return_type_hint_parse_error,
-                            "Got EOF instead of function return type hint at line %u\n",
-                            lines_count
+                            "Got EOF instead of function return type hint at line %u\nCurrent term is '%s'\n",
+                            lines_count,
+                            buf
                         )
 
                         if (curr_char == string_opening_char)
@@ -1061,13 +1077,23 @@ process_file_internal(
             }
 
             if (equal_operator_index != buff_length) {
-                memmove(buf + colon_index, buf + equal_operator_index, buff_length - equal_operator_index);
+                memmove(&buf[colon_index], &buf[equal_operator_index], buff_length - equal_operator_index);
                 buf[colon_index + buff_length - equal_operator_index] = '\0';
                 goto write_buf;
             }
 
+            uint32_t opened_square_brackets =
+                (total_list_or_index_open_symbols - list_or_index_open_symbols_before_colon_count)
+                - (total_list_or_index_close_symbols - list_or_index_close_symbols_before_colon_count);
+            
+            fallback_buffer[0] = ':'; // Buffer is used in case variable has typehint without initialization.
+            fallback_buffer[1] = curr_char;
+            size_t fallback_buffer_size = 2;
+            
             buff_length = colon_index;
             while ((curr_char = fin.get()) != -1) {
+                fallback_buffer[fallback_buffer_size++] = (char)curr_char;
+
                 if (is_comment_opened) {
                     if (curr_char == '\n' || curr_char == '\r') {
                         ++late_line_increase_counter;
@@ -1101,6 +1127,7 @@ process_file_internal(
                                 "Got EOF instead of type hint end at line %u. String was not closed.\n",
                                 lines_count
                             )
+                            fallback_buffer[fallback_buffer_size++] = (char)curr_char;
 
                             if (curr_char != string_opening_char)
                             {// Context is """data"some_char... or '''data'some_char...
@@ -1117,6 +1144,7 @@ process_file_internal(
                                 "Got EOF instead of type hint end at line %u. String was not closed.\n",
                                 lines_count
                             )
+                            fallback_buffer[fallback_buffer_size++] = (char)curr_char;
 
                             if (curr_char != string_opening_char)
                             {// Context is """data""some_char... or '''data''some_char...
@@ -1144,9 +1172,11 @@ process_file_internal(
                         AssertWithArgs(
                             curr_char != -1,
                             ErrorCodes::unexpected_eof,
-                            "Got EOF instead of type hint end at line %u\n",
-                            lines_count
+                            "Got EOF instead of type hint end at line %u\nCurrent term is '%s'\n",
+                            lines_count,
+                            buf
                         )
+                        fallback_buffer[fallback_buffer_size++] = (char)curr_char;
 
                         if (curr_char != string_opening_char)
                         {// Context is "some_char... or 'some_char...
@@ -1161,9 +1191,11 @@ process_file_internal(
                         AssertWithArgs(
                             curr_char != -1,
                             ErrorCodes::unexpected_eof,
-                            "Got EOF instead of type hint end at line %u\n",
-                            lines_count
+                            "Got EOF instead of type hint end at line %u\nCurrent term is '%s'\n",
+                            lines_count,
+                            buf
                         )
+                        fallback_buffer[fallback_buffer_size++] = (char)curr_char;
 
                         if (curr_char == string_opening_char)
                         {// Context is """... or '''...
@@ -1187,6 +1219,14 @@ process_file_internal(
                 case '\n':
                 case '\r':
                     ++late_line_increase_counter;
+                    if (opened_square_brackets == 0 && buf[buff_length - 1] != '\\')
+                    {// variable: type (without initialization)
+                        memmove(&buf[colon_index], &fallback_buffer, fallback_buffer_size);
+                        buff_length = colon_index + fallback_buffer_size;
+                        buf[buff_length] = '\0';
+                        fout << buf;
+                        goto update_counters_and_buffer;
+                    }
                     [[fallthrough]];
                 case ' ':
                 case '\\':
@@ -1194,23 +1234,49 @@ process_file_internal(
                     Check_BuffLen(buff_length);
                     buf[buff_length++] = curr_char;
                     continue;
+                case '[':
+                    ++opened_square_brackets;
+                    continue;
+                case ']':
+                    AssertWithArgs(
+                        opened_square_brackets != 0,
+                        ErrorCodes::too_much_closing_square_brackets,
+                        "Closing bracket ']' without opened one at line %u\nCurrent term is '%s'\n",
+                        lines_count,
+                        buf
+                    )
+                    --opened_square_brackets;
+                    continue;
                 }
+            }
+
+            if (opened_square_brackets == 0 && buf[buff_length - 1] != '\\')
+            {// variable: type (without initialization)
+                memmove(&buf[colon_index], &fallback_buffer, fallback_buffer_size);
+                buff_length = colon_index + fallback_buffer_size;
+                buf[buff_length] = '\0';
+                fout << buf;
+                goto update_counters_and_buffer;
             }
             
             AssertWithArgs(
                 false,
                 ErrorCodes::unexpected_eof,
-                "Got EOF instead of type hint end at line %u\n",
-                lines_count
+                "Got EOF instead of type hint end at line %u\nCurrent term is '%s'\n",
+                lines_count,
+                buf
             )
         }
 
         write_buf:
-            buf[buff_length] = '\0';
-            fout << buf << (char)curr_char;
+            if (buff_length != 0) {
+                buf[buff_length] = '\0';
+                fout << buf;
+            }
+            fout << (char)curr_char;
+            goto update_counters_and_buffer;
         
-            /* update_counters_and_buffer */
-
+        update_counters_and_buffer:
             dict_or_set_init_starts += dict_or_set_open_minus_close_symbols_before_colon_count;
             list_or_index_init_starts += list_or_index_open_minus_close_symbols_before_colon_count;
 
@@ -1231,14 +1297,14 @@ process_file_internal(
             AssertWithArgs(
                 dict_or_set_init_starts >= 0,
                 ErrorCodes::too_much_closing_curly_brackets,
-                "Closing bracket '}' without opened one at line %u\nCurrent term is %s\n",
+                "Closing bracket '}' without opened one at line %u\nCurrent term is '%s'\n",
                 lines_count,
                 buf
             )
             AssertWithArgs(
                 list_or_index_init_starts >= 0,
                 ErrorCodes::too_much_closing_square_brackets,
-                "Closing bracket ']' without opened one at line %u\nCurrent term is %s\n",
+                "Closing bracket ']' without opened one at line %u\nCurrent term is '%s'\n",
                 lines_count,
                 buf
             )
@@ -1252,7 +1318,7 @@ process_file_internal(
     }
 
     /* Flush buffer */
-    if (buff_length != 0){
+    if (buff_length != 0) {
         buf[buff_length] = '\0';
         fout << buf;
     }
@@ -1378,7 +1444,7 @@ ErrorCodes process_files(
         AssertWithArgs(
             exists,
             ErrorCodes::src_file_open_error,
-            "Could not open file %s\n",
+            "Could not open file '%s'\n",
             filename.c_str()
         )
         if (!exists) {
@@ -1392,7 +1458,7 @@ ErrorCodes process_files(
         AssertWithArgs(
             no_errors,
             ErrorCodes::single_file_process_error,
-            "An error occured while processing %llu / %llu file %s\n",
+            "An error occured while processing %llu / %llu file '%s'\n",
             processed_files,
             total_files,
             filename.c_str()
