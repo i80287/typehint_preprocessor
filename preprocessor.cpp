@@ -3,10 +3,8 @@
 #include <cstring>       // memmove
 #include <cstdint>       // size_t, uint32_t
 #include <sys/types.h>   // ssize_t
-#include <ctime>         // time
 #include <cstdarg>       // __VA_ARGS__
 #include <cstdio>        // fprintf
-#include <cstdlib>       // rand, srand
 #include <iostream>      // cout, cerr
 #include <vector>        // vector<>
 #include <type_traits>   // is_same<>
@@ -311,7 +309,7 @@ process_file_internal(
     uint32_t late_line_increase_counter = 0;
 
     while ((curr_char = fin.get()) != -1) {
-        if (is_not_delim(curr_char) || is_string_opened) {
+        if (is_not_delim(curr_char) || is_string_opened || is_comment_opened) {
             Check_BuffLen(buff_length)
             buf[buff_length++] = (char)curr_char;
 
@@ -1263,25 +1261,6 @@ process_file_internal(
     return current_state;
 }
 
-static inline std::string gen_random_filename() {
-    constexpr size_t length = 16;
-    static const char alphanum[] =
-        "0123456789"
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-        "abcdefghijklmnopqrstuvwxyz";
-
-    std::string tmp_s;
-    tmp_s.reserve(length + sizeof("_tmp.py"));
-
-    std::srand((uint32_t)(std::time(0) ^ std::rand()));
-    for (size_t i = 0; i != length; ++i) {
-        tmp_s += alphanum[std::rand() % (sizeof(alphanum) - 1)];
-    }
-    tmp_s += "_tmp.py";
-    
-    return tmp_s;
-}
-
 ErrorCodes process_file(
     const std::string &input_filename,
     const std::unordered_set<std::string> &ignored_functions,
@@ -1298,7 +1277,7 @@ ErrorCodes process_file(
         return ErrorCodes::src_file_open_error;
     }
 
-    const std::string &tmp_file_name = gen_random_filename();
+    const std::string tmp_file_name = "tmp_" + input_filename;
     std::ofstream tmp_fout(tmp_file_name, std::ios::out | std::ios::trunc);
     if (!tmp_fout.is_open()) {
         fin.close();
