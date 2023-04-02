@@ -1,7 +1,9 @@
 #include "preprocessor.hpp"
+#include "flags_parser.hpp"
 
-int main() {
-    constexpr PreprocessorFlags flags = default_flags | PreprocessorFlags::debug;
+int main(int argc, const char **const argv) {
+    const PreprocessorFlags flags = parse_flags(argc, argv);
+
     const std::unordered_set<std::string> filenames = {
         "example_file.py"
     };

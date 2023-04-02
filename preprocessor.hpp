@@ -9,11 +9,11 @@
 using std::uint32_t;
 
 enum class PreprocessorFlags : uint32_t {
-    no_flags           = 0b0000,
-    overwrite_file     = 0b0001,
-    verbose            = 0b0010,
-    debug              = 0b0100,
-    continue_on_error  = 0b1000 /* Not recommended to use. */
+    no_flags          = 1 >> 1,
+    overwrite_file    = 1 << 0,
+    verbose           = 1 << 1,
+    debug             = 1 << 2,
+    continue_on_error = 1 << 3 /* Not recommended to use. */
 };
 
 enum class ErrorCodes : uint32_t {
@@ -37,7 +37,7 @@ enum class ErrorCodes : uint32_t {
     tmp_file_open_error                     = 1 << 16,
     tmp_file_delete_error                   = 1 << 17,
     overwrite_error                         = 1 << 18,
-    single_file_process_error               = 1 << 19, /* Can only occur while processing many files at once. */
+    single_file_process_error               = 1 << 19 /* Can only occur while processing many files at once. */
 };
 
 inline constexpr ErrorCodes
