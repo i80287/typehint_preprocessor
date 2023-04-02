@@ -26,7 +26,7 @@ static inline constexpr PreprocessorFlags parse_flag(const char *arg) {
         break;
     case 'a':
         if (strcmp(++arg, "ll_disabled") == 0) {
-            return PreprocessorFlags::all_disabled;
+            return PreprocessorFlags::all_flags_disabled;
         }
         break;
     }

@@ -19,7 +19,7 @@ using std::size_t;
 using std::uint32_t;
 
 /* must be power of two. */
-static constexpr size_t MAX_BUFF_SIZE = 1024;
+static constexpr size_t MAX_BUFF_SIZE = 8192;
 static_assert((MAX_BUFF_SIZE & (MAX_BUFF_SIZE - 1)) == 0);
 
 #define Check_BuffLen(buff_length) \
@@ -37,29 +37,32 @@ static_assert((MAX_BUFF_SIZE & (MAX_BUFF_SIZE - 1)) == 0);
 #define Assert(expression, message, error_code) \
     static_assert(std::is_same<decltype((message)[0]), const char&>::value);\
     if (!(expression)) {\
-        if ((preprocessor_flags & PreprocessorFlags::verbose) != PreprocessorFlags::no_flags) {\
+        if (is_verbose_mode) {\
             std::clog << "Assertion error. Error message:\n" << message << '\n';\
         }\
         current_state |= error_code;\
-        if ((preprocessor_flags & PreprocessorFlags::continue_on_error) == PreprocessorFlags::no_flags) {\
+        if (is_continue_on_error) {\
             return current_state;\
         }\
     }
 
 #define AssertWithArgs(expression, error_code, ...) \
     if (!(expression)) {\
-        if ((preprocessor_flags & PreprocessorFlags::verbose) != PreprocessorFlags::no_flags) {\
+        if (is_verbose_mode) {\
             fprintf(stderr, __VA_ARGS__);\
         }\
         current_state |= error_code;\
-        if ((preprocessor_flags & PreprocessorFlags::continue_on_error) == PreprocessorFlags::no_flags) {\
+        if (is_continue_on_error) {\
             return current_state;\
         }\
     }\
 
-static inline bool count_symbols(const char *buf, const size_t length, std::vector<size_t> *symbols_indexes) {
+#define check_newline_char if (curr_char == '\n' || curr_char == '\r') { ++late_line_increase_counter; }
+
+static inline bool count_symbols(const char *buf, const size_t length, std::vector<size_t> *symbols_indexes, size_t &equal_operator_index) {
     bool contains_lambda = false;
     bool is_string_opened = false;
+    bool is_comment_opened = false;
     bool is_long_string_opened = false;
     char string_opening_char = '\0'; // will be either '\'' or '\"'
     int opened_curly_brackets = 0;
@@ -67,22 +70,29 @@ static inline bool count_symbols(const char *buf, const size_t length, std::vect
 
     for (size_t i = 0; i != length; ++i) {
         const char curr_char = buf[i];
+        if (is_comment_opened) {
+            if (curr_char == '\n' || curr_char == '\r') {
+                is_comment_opened = false;
+            }
+            continue;
+        }
         
         if (is_string_opened)
         {// This string is part of the type hint.
             if (curr_char == '\'' || curr_char == '\"')
             {// Only '\'' or '\"' chars can close / open string
                 if (curr_char != string_opening_char)
-                {// Context is "'... or '"...
+                {// Context is "data'... or 'data"... or """data'... or '''data"...
                     continue;
                 }
 
                 // Current char is equal to the char that opened the string.
+                // Context is "data"... or 'data'... or """data"... or '''data'...
 
                 if (!is_long_string_opened || (length + 2 < length && buf[i + 1] == curr_char && buf[i + 2] == curr_char))
-                {// Context is in the string like ' data ' or " data "
+                {// Context is in the string like 'data'... or "data"...
                  // or
-                 // Context is in the string like ''' data ''' or """ data """ and long string is closed.
+                 // '''data'''... or """data"""... and long string is closed.
                     is_string_opened = false;
                     is_long_string_opened = false;
                     string_opening_char = '\0';
@@ -92,6 +102,9 @@ static inline bool count_symbols(const char *buf, const size_t length, std::vect
         }
 
         switch (curr_char) {
+        case '#':
+            is_comment_opened = true;
+            continue;
         case '\'':
         case '\"':
             is_string_opened = true;
@@ -126,11 +139,15 @@ static inline bool count_symbols(const char *buf, const size_t length, std::vect
             if ((i + 6 < length) && buf[i + 1] == 'l') {
                 if ((buf[i + 2] == 'a') & (buf[i + 3] == 'm') & (buf[i + 4] == 'b') & (buf[i + 5] == 'd') & (buf[i + 6] == 'a')) {
                     if (i + 7 == length || (i + 8 == length && buf[i + 7] == ':'))
-                    {// foo=lambda or foo=lambda:
+                    {// ...=lambda or ...=lambda:
                         contains_lambda = true;
                     }
                 }
             }
+            if (i == 0 || buf[i - 1] != ':') {
+                equal_operator_index = i;
+            }
+
             continue;
         }
     }
@@ -215,10 +232,6 @@ static inline constexpr bool is_not_delim(const char c) noexcept {
     }
 }
 
-static inline constexpr bool is_not_typehint_end(const char c) noexcept {
-    return c != '=';
-}
-
 static inline constexpr bool is_function_defenition(const char *buf, const size_t length) noexcept {
     return (length == 3) && (buf[0] == 'd' && buf[1] == 'e' && buf[2] == 'f');
 }
@@ -270,6 +283,8 @@ process_file_internal(
     const PreprocessorFlags preprocessor_flags
 ) {
     const bool is_debug_mode = (preprocessor_flags & PreprocessorFlags::debug) != PreprocessorFlags::no_flags;
+    const bool is_verbose_mode = (preprocessor_flags & PreprocessorFlags::verbose) != PreprocessorFlags::no_flags;
+    const bool is_continue_on_error = (preprocessor_flags & PreprocessorFlags::continue_on_error) == PreprocessorFlags::no_flags;
     ErrorCodes current_state = ErrorCodes::no_errors;
     
     /* Indexes of ':' , '{', '}', '[', ']' in term.*/
@@ -281,7 +296,7 @@ process_file_internal(
     symbols_indexes[4].reserve(8);
 
     size_t buff_length = 0;
-    char buf[MAX_BUFF_SIZE] {};
+    char *const buf = new char[MAX_BUFF_SIZE];
 
     uint32_t colon_operators_starts = 0;
     int dict_or_set_init_starts = 0;
@@ -289,15 +304,24 @@ process_file_internal(
     uint32_t lines_count = 1;
 
     int curr_char = 0;
+    bool is_comment_opened = false;
     bool is_string_opened = false;
     bool is_long_string_opened = false;
     char string_opening_char = '\0';
     uint32_t late_line_increase_counter = 0;
-        
+
     while ((curr_char = fin.get()) != -1) {
         if (is_not_delim(curr_char) || is_string_opened) {
             Check_BuffLen(buff_length)
             buf[buff_length++] = (char)curr_char;
+
+            if (is_comment_opened) {
+                if (curr_char == '\n' || curr_char == '\r') {
+                    ++late_line_increase_counter;
+                    is_comment_opened = false;
+                }
+                continue;
+            }
 
             if (is_string_opened)
             {// This string is part of the type hint.
@@ -328,7 +352,7 @@ process_file_internal(
 
                         if (curr_char != string_opening_char)
                         {// Context is """data"some_char... or '''data'some_char...
-                            if (curr_char == '\n' || curr_char == '\r') { ++late_line_increase_counter; }
+                            check_newline_char
                             continue;
                         }
 
@@ -345,7 +369,7 @@ process_file_internal(
 
                         if (curr_char != string_opening_char)
                         {// Context is """data""some_char... or '''data''some_char...
-                            if (curr_char == '\n' || curr_char == '\r') { ++late_line_increase_counter; }
+                            check_newline_char
                             continue;
                         }
 
@@ -358,8 +382,10 @@ process_file_internal(
                 continue;
             }
 
-            if (curr_char == '\'' || curr_char == '\"')
-            {// Context is "... or '...
+            switch (curr_char) {
+            case '\'':
+            case '\"':
+                // Context is "... or '...
                 is_string_opened = true;
                 string_opening_char = curr_char;
 
@@ -375,7 +401,7 @@ process_file_internal(
 
                 if (curr_char != string_opening_char)
                 {// Context is "some_char... or 'some_char...
-                    if (curr_char == '\n' || curr_char == '\r') { ++late_line_increase_counter; }
+                    check_newline_char
                     continue;
                 }
 
@@ -397,24 +423,30 @@ process_file_internal(
                 {// Context is ""some_char... or ''some_char...
                     is_long_string_opened = false;
                     is_string_opened = false;
-                    if (curr_char == '\n' || curr_char == '\r') { ++late_line_increase_counter; }
+                    check_newline_char
                 }
-
+                continue;
+            case '\n':
+            case '\r':
+                ++late_line_increase_counter;
+                continue;
+            case '#':
+                is_comment_opened = true;
+                continue;
+            default:
                 continue;
             }
-            else if (curr_char == '\n' || curr_char == '\r') {
-                ++late_line_increase_counter;
-            }
-
-            continue;
         }
-        if (curr_char == '\n' || curr_char == '\r') { ++late_line_increase_counter; }
+
+        check_newline_char
         is_long_string_opened = false;
         is_string_opened = false;
+
 #ifdef _MSC_VER
 #pragma region Special_symbols_counting
 #endif
-        const bool contains_lambda = count_symbols(buf, buff_length, symbols_indexes);
+        size_t equal_operator_index = buff_length;
+        const bool contains_lambda = count_symbols(buf, buff_length, symbols_indexes, equal_operator_index);
 
         const auto &colon_symbols_indexes = symbols_indexes[0];
         const auto &ds_open_symbols_indexes = symbols_indexes[1];
@@ -472,14 +504,14 @@ process_file_internal(
 #endif
         if (is_function_defenition(buf, buff_length)) {
             Check_BuffLen(buff_length)
-            buf[buff_length++] = curr_char; // add delimeter char after 'def'. Probably a ' ' of '\\'
+            buf[buff_length++] = curr_char; // add delimeter char after 'def'. Probably a ' ' or '\\'
             while ((curr_char = fin.get()) != -1) {
                 Check_BuffLen(buff_length)
                 buf[buff_length++] = (char)curr_char;
                 if (!is_function_accepted_space(curr_char)) {
                     break;
                 }
-                if (curr_char == '\n' || curr_char == '\r') { ++late_line_increase_counter; }
+                check_newline_char
             }
             AssertWithArgs(
                 curr_char != -1,
@@ -488,36 +520,61 @@ process_file_internal(
                 lines_count
             )
 
-            const size_t function_name_start_index = buff_length - 1;
+            std::string function_name;
+            function_name.reserve(79);
 
             // Read function name.
             while ((curr_char = fin.get()) != -1) {
                 Check_BuffLen(buff_length)
                 buf[buff_length++] = (char)curr_char;
-                if (curr_char == '(') {
-                    break;
+
+                if (is_comment_opened) {
+                    if (curr_char == '\n' || curr_char == '\r') {
+                        ++late_line_increase_counter;
+                        is_comment_opened = false;
+                    }
+                    continue;
                 }
-                AssertWithArgs(
-                    (curr_char != '\n' && curr_char != '\r'),
-                    ErrorCodes::function_name_parse_error,
-                    "Got new line char instead of function name at line %u\n",
-                    lines_count
-                )
+
+                switch (curr_char) {
+                case '(':
+                    goto function_name_ended;
+                case '\n':
+                case '\r':
+                    ++late_line_increase_counter;
+                case '\\':
+                    continue;
+                case '#':
+                    is_comment_opened = true;
+                    continue;
+                case '\"':
+                case '\'':
+                    AssertWithArgs(
+                        false,
+                        ErrorCodes::function_name_parse_error,
+                        "String opening chars like ' and \" at line %u are not allowed for function name\n",
+                        lines_count
+                    )
+                    continue;
+                default:
+                    function_name += curr_char;
+                    continue;
+                }
             }
             AssertWithArgs(
                 curr_char != -1,
-                ErrorCodes::function_parse_error,
+                ErrorCodes::function_name_parse_error,
                 "Got EOF instead of function name at line %u\n",
                 lines_count
             )
 
-            buf[buff_length - 1] = '\0';
-            const bool ignore_function = ignored_functions.contains(buf + function_name_start_index);
-            buf[buff_length - 1] = '(';
+            function_name_ended:
+            const bool ignore_function = ignored_functions.contains(function_name);
 
             // Go through function params.
             uint32_t opened_round_brackets = 1;
             uint32_t opened_square_brackets = 0;
+            is_comment_opened = false;
             is_string_opened = false;
             is_long_string_opened = false;
             string_opening_char = '\0'; // will be either '\'' or '\"'
@@ -535,6 +592,20 @@ process_file_internal(
             )
 
             while ((curr_char = fin.get()) != -1) {
+                if (is_comment_opened) {
+                    if (curr_char == '\n' || curr_char == '\r') {
+                        ++late_line_increase_counter;
+                        is_comment_opened = false;
+                    }
+
+                    if (should_write_to_buf) {
+                        Check_BuffLen(buff_length)
+                        buf[buff_length++] = (char)curr_char;
+                    }
+
+                    continue;
+                }
+
                 if (is_string_opened)
                 {// This string is part of the type hint.
                     if (should_write_to_buf) {
@@ -571,7 +642,7 @@ process_file_internal(
 
                             if (curr_char != string_opening_char)
                             {// Context is """data"some_char... or '''data'some_char...
-                                if (curr_char == '\n' || curr_char == '\r') { ++late_line_increase_counter; }
+                                check_newline_char
                                 continue;
                             }
 
@@ -590,7 +661,7 @@ process_file_internal(
 
                             if (curr_char != string_opening_char)
                             {// Context is """data""some_char... or '''data''some_char...
-                                if (curr_char == '\n' || curr_char == '\r') { ++late_line_increase_counter; }
+                                check_newline_char
                                 continue;
                             }
 
@@ -628,7 +699,7 @@ process_file_internal(
 
                     if (curr_char != string_opening_char)
                     {// Context is "some_char... or 'some_char...
-                        if (curr_char == '\n' || curr_char == '\r') { ++late_line_increase_counter; }
+                        check_newline_char
                         continue;
                     }
 
@@ -654,7 +725,17 @@ process_file_internal(
                     {// Context is ""some_char... or ''some_char...
                         is_long_string_opened = false;
                         is_string_opened = false;
-                        if (curr_char == '\n' || curr_char == '\r') { ++late_line_increase_counter; }
+
+                        switch (curr_char)
+                        {
+                        case '\n':
+                        case '\r':
+                            ++late_line_increase_counter;
+                            continue;
+                        case '#':
+                            is_comment_opened = true;
+                            continue;
+                        }
                     }
 
                     continue;
@@ -671,15 +752,13 @@ process_file_internal(
                     ++opened_square_brackets;
                     break;
                 case ']':
-                    {
-                        AssertWithArgs(
-                            opened_square_brackets != 0,
-                            ErrorCodes::function_argument_type_hint_parse_error, 
-                            "Too much closing square brackets in the function argument type hint at line %u\n",
-                            lines_count
-                        );
-                        --opened_square_brackets;
-                    }
+                    AssertWithArgs(
+                        opened_square_brackets != 0,
+                        ErrorCodes::function_argument_type_hint_parse_error, 
+                        "Too much closing square brackets in the function argument type hint at line %u\n",
+                        lines_count
+                    );
+                    --opened_square_brackets;
                     break;
                 case '(':
                     ++opened_round_brackets;
@@ -708,6 +787,9 @@ process_file_internal(
                 case '\n':
                 case '\r':
                     ++late_line_increase_counter;
+                    break;
+                case '#':
+                    is_comment_opened = true;
                     break;
                 }
 
@@ -739,7 +821,7 @@ process_file_internal(
                     break;
                 }
 
-                if (curr_char == '\n' || curr_char == '\r') { ++late_line_increase_counter; }
+                check_newline_char
 
                 Check_BuffLen(buff_length);
                 buf[buff_length++] = (char)curr_char;
@@ -752,8 +834,7 @@ process_file_internal(
             )
 
             if (curr_char == ':') {
-                buf[buff_length++] = ':';
-                goto write_buf_after_func;
+                goto write_buf;
             }
             AssertWithArgs(
                 curr_char == '-',
@@ -777,6 +858,7 @@ process_file_internal(
                 lines_count
             )
 
+            is_comment_opened = false;
             is_string_opened = false;
             is_long_string_opened = false;
             string_opening_char = '\0';
@@ -786,7 +868,22 @@ process_file_internal(
                 buf[buff_length++] = '>';
             }
 
+            // Go through function type hint.
             while ((curr_char = fin.get()) != -1) {
+                if (is_comment_opened) {
+                    if (curr_char == '\n' || curr_char == '\r') {
+                        ++late_line_increase_counter;
+                        is_comment_opened = false;
+                    }
+
+                    if (should_write_to_buf) {
+                        Check_BuffLen(buff_length)
+                        buf[buff_length++] = (char)curr_char;
+                    }
+
+                    continue;
+                }
+
                 if (is_string_opened)
                 {// This string is part of the type hint.
                     if (ignore_function) {
@@ -823,7 +920,7 @@ process_file_internal(
 
                             if (curr_char != string_opening_char)
                             {// Context is """data"some_char... or '''data'some_char...
-                                if (curr_char == '\n' || curr_char == '\r') { ++late_line_increase_counter; }
+                                check_newline_char
                                 continue;
                             }
 
@@ -842,7 +939,7 @@ process_file_internal(
 
                             if (curr_char != string_opening_char)
                             {// Context is """data""some_char... or '''data''some_char...
-                                if (curr_char == '\n' || curr_char == '\r') { ++late_line_increase_counter; }
+                                check_newline_char
                                 continue;
                             }
 
@@ -855,91 +952,93 @@ process_file_internal(
                     continue;
                 }
 
-                if (curr_char == '\'' || curr_char == '\"')
-                {// Context is '... or "...
-                    if (ignore_function) {
-                        Check_BuffLen(buff_length);
-                        buf[buff_length++] = (char)curr_char;
-                    }
+                switch (curr_char) {
+                case '\'':
+                case '\"':
+                    {// Context is '... or "...
+                        if (ignore_function) {
+                            Check_BuffLen(buff_length);
+                            buf[buff_length++] = (char)curr_char;
+                        }
 
-                    is_string_opened = true;
-                    string_opening_char = curr_char;
-
-                    curr_char = fin.get();
-                    AssertWithArgs(
-                        curr_char != -1,
-                        ErrorCodes::function_return_type_hint_parse_error,
-                        "Got EOF instead of function return type hint at line %u. String was not closed.\n",
-                        lines_count
-                    )
-
-                    if (ignore_function) {
-                        Check_BuffLen_Reserve(buff_length, 2)
-                        buf[buff_length++] = (char)curr_char;
-                    }
-
-                    if (curr_char != string_opening_char)
-                    {// Context is "some_char... or 'some_char...
-                        if (curr_char == '\n' || curr_char == '\r') { ++late_line_increase_counter; }
                         is_string_opened = true;
+                        string_opening_char = curr_char;
+
+                        curr_char = fin.get();
+                        AssertWithArgs(
+                            curr_char != -1,
+                            ErrorCodes::function_return_type_hint_parse_error,
+                            "Got EOF instead of function return type hint at line %u. String was not closed.\n",
+                            lines_count
+                        )
+
+                        if (ignore_function) {
+                            Check_BuffLen_Reserve(buff_length, 2)
+                            buf[buff_length++] = (char)curr_char;
+                        }
+
+                        if (curr_char != string_opening_char)
+                        {// Context is "some_char... or 'some_char...
+                            check_newline_char
+                            is_string_opened = true;
+                            continue;
+                        }
+
+                        // Context is ""... or ''...
+
+                        curr_char = fin.get();
+                        AssertWithArgs(
+                            curr_char != -1,
+                            ErrorCodes::function_return_type_hint_parse_error,
+                            "Got EOF instead of function return type hint at line %u\n",
+                            lines_count
+                        )
+
+                        if (curr_char == string_opening_char)
+                        {// Context is """... or '''...
+                            is_long_string_opened = true;
+                            is_string_opened = true;
+                        } else
+                        {// Context is ""some_char... or ''some_char...
+                            is_long_string_opened = false;
+                            is_string_opened = false;
+                            string_opening_char = '\0';
+                            check_newline_char
+                        }
+
+                        if (ignore_function) {
+                            buf[buff_length++] = (char)curr_char;
+                        }
                         continue;
                     }
-
-                    // Context is ""... or ''...
-
-                    curr_char = fin.get();
-                    AssertWithArgs(
-                        curr_char != -1,
-                        ErrorCodes::function_return_type_hint_parse_error,
-                        "Got EOF instead of function return type hint at line %u\n",
-                        lines_count
-                    )
-
-                    if (curr_char == string_opening_char)
-                    {// Context is """... or '''...
-                        is_long_string_opened = true;
-                        is_string_opened = true;
-                    } else
-                    {// Context is ""some_char... or ''some_char...
-                        is_long_string_opened = false;
-                        is_string_opened = false;
-                        string_opening_char = '\0';
-                        if (curr_char == '\n' || curr_char == '\r') { ++late_line_increase_counter; }
-                    }
-
-                    if (ignore_function) {
-                        buf[buff_length++] = (char)curr_char;
-                    }
-                    continue;
-                }
-
-                if (is_function_accepted_space(curr_char)) {
+                case '#':
+                    is_comment_opened = true;
+                    break;
+                case ':':
+                    goto write_buf;
+                case '\n':
+                case '\r':
+                    ++late_line_increase_counter;
+                    [[fallthrough]];
+                case ' ':
+                case '\\':
+                case '\t':
                     Check_BuffLen(buff_length);
                     buf[buff_length++] = curr_char;
-                    
-                    if (curr_char == '\n' || curr_char == '\r') { ++late_line_increase_counter; }
-
                     continue;
-                }
-
-                if (curr_char == ':') {
-                    Check_BuffLen(buff_length);
-                    buf[buff_length++] = ':';
-                    goto write_buf_after_func;
                 }
 
                 if (ignore_function) {
-                    Check_BuffLen_Reserve(buff_length, 2)
+                    Check_BuffLen(buff_length);
                     buf[buff_length++] = (char)curr_char;
                 }
             }
-            AssertWithArgs(
-                false,
-                ErrorCodes::function_parse_error,
-                "Got EOF instead of function initialization end symbol ':' at line %u\n",
-                lines_count
-            )
-            continue;
+
+            if ((preprocessor_flags & PreprocessorFlags::verbose) != PreprocessorFlags::no_flags) {
+                std::clog << "Got EOF instead of function initialization end symbol ':' at line " << lines_count << "\nFile processing cant be continued\n";
+            }
+
+            return current_state |= ErrorCodes::function_return_type_hint_parse_error;
         }
 #ifdef _MSC_VER
 #pragma endregion Function_parsing
@@ -957,51 +1056,163 @@ process_file_internal(
                 --colon_operators_starts;
                 goto write_buf;
             }
-            if (is_in_initialization_context) {
+            if (is_in_initialization_context
+            || (dict_or_set_open_minus_close_symbols_before_colon_count > 0)
+            || (list_or_index_open_minus_close_symbols_before_colon_count > 0)) {
                 goto write_buf;
             }
 
-            if ((dict_or_set_open_minus_close_symbols_before_colon_count <= 0) && (list_or_index_open_minus_close_symbols_before_colon_count <= 0)) {
-                size_t typing_end_index = colon_index;
-                int typehint_iter_char = '\0';
-                while ((++typing_end_index != buff_length) && is_not_typehint_end(typehint_iter_char = buf[typing_end_index]))
-                {// Skip type hint.
-                    if (typehint_iter_char == '\n' || typehint_iter_char == '\r') { ++late_line_increase_counter; }
-                }
-                
-                if (typing_end_index != buff_length)
-                {// st:set[int]= {}
-                    memmove(buf + colon_index, buf + typing_end_index, buff_length - typing_end_index);
-                    buf[colon_index + buff_length - typing_end_index] = '\0';
-                } else {
-                    while (((curr_char = fin.get()) != -1) && is_not_typehint_end(curr_char))
-                    {/*Skip stream untill '=' e.g. type hint end */
-                        if (curr_char == '\n' || curr_char == '\r') { ++late_line_increase_counter; }
+            if (equal_operator_index != buff_length) {
+                memmove(buf + colon_index, buf + equal_operator_index, buff_length - equal_operator_index);
+                buf[colon_index + buff_length - equal_operator_index] = '\0';
+                goto write_buf;
+            }
+
+            buff_length = colon_index;
+            while ((curr_char = fin.get()) != -1) {
+                if (is_comment_opened) {
+                    if (curr_char == '\n' || curr_char == '\r') {
+                        ++late_line_increase_counter;
+                        is_comment_opened = false;
                     }
-                    AssertWithArgs(
-                        curr_char != -1,
-                        ErrorCodes::unexpected_eof,
-                        "Got EOF instead of type hint end at line %u\n",
-                        lines_count
-                    )
-                    buf[colon_index] = '\0';
+                    continue;
                 }
 
-                goto write_buf;
+                if (is_string_opened)
+                {// This string is part of the type hint.
+                    if (curr_char == '\'' || curr_char == '\"')
+                    {// Only '\'' or '\"' chars can close / open string
+                        if (curr_char != string_opening_char)
+                        {// Context is "'... or '"...
+                            continue;
+                        }
+
+                        // Current char is equal to the char that opened the string.
+                        // Context is "data"... or 'data'... or """data"... or '''data'...
+
+                        if (!is_long_string_opened)
+                        {// Context is in the string like 'data' or "data"
+                            is_string_opened = false;
+                            string_opening_char = '\0';
+                        } else
+                        {// Context is like """data"... or '''data'...
+                            curr_char = fin.get();
+                            AssertWithArgs(
+                                curr_char != -1,
+                                ErrorCodes::function_return_type_hint_parse_error,
+                                "Got EOF instead of type hint end at line %u. String was not closed.\n",
+                                lines_count
+                            )
+
+                            if (curr_char != string_opening_char)
+                            {// Context is """data"some_char... or '''data'some_char...
+                                check_newline_char
+                                continue;
+                            }
+
+                            // Context is """data""... or '''data''...
+
+                            curr_char = fin.get();
+                            AssertWithArgs(
+                                curr_char != -1,
+                                ErrorCodes::unexpected_eof,
+                                "Got EOF instead of type hint end at line %u. String was not closed.\n",
+                                lines_count
+                            )
+
+                            if (curr_char != string_opening_char)
+                            {// Context is """data""some_char... or '''data''some_char...
+                                check_newline_char
+                                continue;
+                            }
+
+                            // Context is """data"""... or '''data'''...
+                            is_string_opened = false;
+                            is_long_string_opened = false;
+                            string_opening_char = '\0';
+                        }
+                    }
+                    continue;
+                }
+
+                switch (curr_char) {
+                case '\'':
+                case '\"':
+                    {// Context is '... or "...
+                        is_string_opened = true;
+                        string_opening_char = curr_char;
+
+                        curr_char = fin.get();
+                        AssertWithArgs(
+                            curr_char != -1,
+                            ErrorCodes::unexpected_eof,
+                            "Got EOF instead of type hint end at line %u\n",
+                            lines_count
+                        )
+
+                        if (curr_char != string_opening_char)
+                        {// Context is "some_char... or 'some_char...
+                            check_newline_char
+                            is_string_opened = true;
+                            continue;
+                        }
+
+                        // Context is ""... or ''...
+
+                        curr_char = fin.get();
+                        AssertWithArgs(
+                            curr_char != -1,
+                            ErrorCodes::unexpected_eof,
+                            "Got EOF instead of type hint end at line %u\n",
+                            lines_count
+                        )
+
+                        if (curr_char == string_opening_char)
+                        {// Context is """... or '''...
+                            is_long_string_opened = true;
+                            is_string_opened = true;
+                        } else
+                        {// Context is ""some_char... or ''some_char...
+                            is_long_string_opened = false;
+                            is_string_opened = false;
+                            string_opening_char = '\0';
+                            check_newline_char
+                        }
+
+                        continue;
+                    }
+                case '#':
+                    is_comment_opened = true;
+                    continue;
+                case '=':
+                    goto write_buf;
+                case '\n':
+                case '\r':
+                    ++late_line_increase_counter;
+                    [[fallthrough]];
+                case ' ':
+                case '\\':
+                case '\t':
+                    Check_BuffLen(buff_length);
+                    buf[buff_length++] = curr_char;
+                    continue;
+                }
             }
+            
+            AssertWithArgs(
+                false,
+                ErrorCodes::unexpected_eof,
+                "Got EOF instead of type hint end at line %u\n",
+                lines_count
+            )
         }
 
         write_buf:
             buf[buff_length] = '\0';
             fout << buf << (char)curr_char;
-            goto update_counters_and_buffer;
         
-        write_buf_after_func:
-            buf[buff_length] = '\0';
-            fout << buf;
-            goto update_counters_and_buffer;
-        
-        update_counters_and_buffer:
+            /* update_counters_and_buffer */
+
             dict_or_set_init_starts += dict_or_set_open_minus_close_symbols_before_colon_count;
             list_or_index_init_starts += list_or_index_open_minus_close_symbols_before_colon_count;
 
@@ -1164,6 +1375,7 @@ ErrorCodes process_files(
     const PreprocessorFlags preprocessor_flags
 ) {
     const bool is_verbose_mode = (preprocessor_flags & PreprocessorFlags::verbose) != PreprocessorFlags::no_flags;
+    const bool is_continue_on_error = (preprocessor_flags & PreprocessorFlags::continue_on_error) == PreprocessorFlags::no_flags;
     size_t processed_files = 0;
     const size_t total_files = filenames.size();
     ErrorCodes current_state = ErrorCodes::no_errors;

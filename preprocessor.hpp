@@ -9,12 +9,12 @@
 using std::uint32_t;
 
 enum class PreprocessorFlags : uint32_t {
-    no_flags          = 1 >> 1,
-    overwrite_file    = 1 << 0,
-    verbose           = 1 << 1,
-    debug             = 1 << 2,
-    continue_on_error = 1 << 3, /* Not recommended to use. */
-    all_disabled      = 1 << 4
+    no_flags           = 1 >> 1,
+    verbose            = 1 << 0,
+    overwrite_file     = 1 << 1,
+    debug              = 1 << 2,
+    continue_on_error  = 1 << 3, /* Not recommended to use. */
+    all_flags_disabled = 1 << 4
 };
 
 enum class ErrorCodes : uint32_t {
