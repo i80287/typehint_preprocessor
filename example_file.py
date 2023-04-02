@@ -105,3 +105,11 @@ def ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 
 def ignored_ignored_ignored_ignored_ignored_ignored_ignored_ignored_ignored_ignored_ignored_ignored_function() -> Callable[..., Literal[1234567890]]:
     return lambda x: 1234567890
+
+def true_func(a: dict) -> Literal[True]:
+    return True
+
+if true_func({1: 1}):
+    print("Indeed")
+
+foo_clone: Callable[..., Literal[1]] = foo
