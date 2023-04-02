@@ -700,7 +700,7 @@ process_file_internal(
                 case ':':
                     if (!default_value_initialization_started)
                     {// Typehint started.
-                        should_write_to_buf = false;
+                        should_write_to_buf = ignore_function;
                     }
                     break;
                 case '=':
@@ -1007,7 +1007,7 @@ process_file_internal(
             dict_or_set_init_starts += dict_or_set_open_minus_close_symbols_before_colon_count;
             list_or_index_init_starts += list_or_index_open_minus_close_symbols_before_colon_count;
 
-            if ((is_debug_mode || (480 <= lines_count && lines_count <= 490)) && buff_length != 0) {
+            if (is_debug_mode) {
                 printf(
                     "Line: %u;\nTerm: '%s'; Buff length: %llu;\nColon colon operators starts: %u\n'{' - '}' on line count: %d;\n'[' - ']' on line count: %d;\n'{' counts: %d\n'[' counts: %d\n\n",
                     lines_count,
