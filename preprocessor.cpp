@@ -251,27 +251,27 @@ static inline constexpr bool is_function_accepted_space(const char c) noexcept {
 static inline ssize_t bin_search_elem_index_less_then_elem(const std::vector<size_t> &vec, size_t elem) {
     size_t l = 0;
     size_t r = vec.size();
-    if (r-- == 0 || elem <= vec[0]) {
+    if ((r-- == 0) | (elem <= vec[0])) {
         return (ssize_t)(-1);
     }
     
     if (elem > vec[r]) {
-        return (ssize_t)r;
+        return (ssize_t)(r);
     }
     
     while (r > l) {
-        const size_t m_index = (l + r + 1) >> 1;
+        size_t m_index = (l + r + 1) >> 1;
         const size_t m_elem = vec[m_index];
         if (m_elem > elem) {
-            r = m_index - 1;
-        } else if (m_elem == elem) {
-            return m_index - 1;
-        } else {
+            r = --m_index;
+        } else if (m_elem != elem) {
             l = m_index;
+        } else {
+            return (ssize_t)(--m_index);
         }
     }
 
-    return (ssize_t)r;
+    return (ssize_t)(r);
 }
 
 static ErrorCodes
@@ -294,10 +294,6 @@ process_file_internal(
     symbols_indexes[3].reserve(8);
     symbols_indexes[4].reserve(8);
 
-    size_t buff_length = 0;
-    char *const buf = new char[MAX_BUFF_SIZE];
-    char *const fallback_buffer = new char[MAX_BUFF_SIZE];
-
     uint32_t colon_operators_starts = 0;
     int dict_or_set_init_starts = 0;
     int list_or_index_init_starts = 0;
@@ -309,6 +305,19 @@ process_file_internal(
     bool is_long_string_opened = false;
     char string_opening_char = '\0';
     uint32_t late_line_increase_counter = 0;
+
+    size_t buff_length = 0;
+    char *const buf = new(std::nothrow) char[MAX_BUFF_SIZE];
+    if (buf == nullptr) {
+        return current_state |= ErrorCodes::memory_allocating_error;
+    }
+    char *const fallback_buffer = new(std::nothrow) char[MAX_BUFF_SIZE];
+    if (fallback_buffer == nullptr) {
+        if (buf) {
+            delete[](buf);
+        }
+        return current_state |= ErrorCodes::memory_allocating_error;
+    }
 
     while ((curr_char = fin.get()) != -1) {
         if (is_not_delim(curr_char) || is_string_opened || is_comment_opened) {
@@ -834,7 +843,7 @@ process_file_internal(
 
                 check_newline_char
 
-                Check_BuffLen(buff_length);
+                Check_BuffLen(buff_length)
                 buf[buff_length++] = (char)curr_char;
             }
             AssertWithArgs(
@@ -971,7 +980,7 @@ process_file_internal(
                 case '\"':
                     {// Context is '... or "...
                         if (ignore_function) {
-                            Check_BuffLen(buff_length);
+                            Check_BuffLen(buff_length)
                             buf[buff_length++] = (char)curr_char;
                         }
 
@@ -1038,13 +1047,13 @@ process_file_internal(
                 case ' ':
                 case '\\':
                 case '\t':
-                    Check_BuffLen(buff_length);
+                    Check_BuffLen(buff_length)
                     buf[buff_length++] = curr_char;
                     continue;
                 }
 
                 if (ignore_function) {
-                    Check_BuffLen(buff_length);
+                    Check_BuffLen(buff_length)
                     buf[buff_length++] = (char)curr_char;
                 }
             }
@@ -1079,7 +1088,7 @@ process_file_internal(
             }
 
             if (equal_operator_index != buff_length) {
-                memmove(&buf[colon_index], &buf[equal_operator_index], buff_length - equal_operator_index);
+                memmove(buf + colon_index, buf + equal_operator_index, buff_length - equal_operator_index);
                 buf[colon_index + buff_length - equal_operator_index] = '\0';
                 goto write_buf;
             }
@@ -1090,11 +1099,12 @@ process_file_internal(
             
             fallback_buffer[0] = ':'; // Buffer is used in case variable has typehint without initialization.
             fallback_buffer[1] = curr_char;
-            size_t fallback_buffer_size = 2;
+            size_t fallback_buffer_length = 2;
             
             buff_length = colon_index;
             while ((curr_char = fin.get()) != -1) {
-                fallback_buffer[fallback_buffer_size++] = (char)curr_char;
+                Check_BuffLen(fallback_buffer_length)
+                fallback_buffer[fallback_buffer_length++] = (char)curr_char;
 
                 if (is_comment_opened) {
                     if (curr_char == '\n' || curr_char == '\r') {
@@ -1129,7 +1139,8 @@ process_file_internal(
                                 "Got EOF instead of type hint end at line %u. String was not closed.\n",
                                 lines_count
                             )
-                            fallback_buffer[fallback_buffer_size++] = (char)curr_char;
+                            Check_BuffLen(fallback_buffer_length)
+                            fallback_buffer[fallback_buffer_length++] = (char)curr_char;
 
                             if (curr_char != string_opening_char)
                             {// Context is """data"some_char... or '''data'some_char...
@@ -1146,7 +1157,8 @@ process_file_internal(
                                 "Got EOF instead of type hint end at line %u. String was not closed.\n",
                                 lines_count
                             )
-                            fallback_buffer[fallback_buffer_size++] = (char)curr_char;
+                            Check_BuffLen(fallback_buffer_length)
+                            fallback_buffer[fallback_buffer_length++] = (char)curr_char;
 
                             if (curr_char != string_opening_char)
                             {// Context is """data""some_char... or '''data''some_char...
@@ -1178,7 +1190,8 @@ process_file_internal(
                             lines_count,
                             buf
                         )
-                        fallback_buffer[fallback_buffer_size++] = (char)curr_char;
+                        Check_BuffLen(fallback_buffer_length)
+                        fallback_buffer[fallback_buffer_length++] = (char)curr_char;
 
                         if (curr_char != string_opening_char)
                         {// Context is "some_char... or 'some_char...
@@ -1197,7 +1210,8 @@ process_file_internal(
                             lines_count,
                             buf
                         )
-                        fallback_buffer[fallback_buffer_size++] = (char)curr_char;
+                        Check_BuffLen(fallback_buffer_length)
+                        fallback_buffer[fallback_buffer_length++] = (char)curr_char;
 
                         if (curr_char == string_opening_char)
                         {// Context is """... or '''...
@@ -1223,8 +1237,8 @@ process_file_internal(
                     ++late_line_increase_counter;
                     if (opened_square_brackets == 0 && buf[buff_length - 1] != '\\')
                     {// variable: type (without initialization)
-                        memmove(&buf[colon_index], &fallback_buffer, fallback_buffer_size);
-                        buff_length = colon_index + fallback_buffer_size;
+                        memmove(buf + colon_index, fallback_buffer, fallback_buffer_length);
+                        buff_length = colon_index + fallback_buffer_length;
                         buf[buff_length] = '\0';
                         fout << buf;
                         goto update_counters_and_buffer;
@@ -1233,7 +1247,7 @@ process_file_internal(
                 case ' ':
                 case '\\':
                 case '\t':
-                    Check_BuffLen(buff_length);
+                    Check_BuffLen(buff_length)
                     buf[buff_length++] = curr_char;
                     continue;
                 case '[':
@@ -1254,8 +1268,8 @@ process_file_internal(
 
             if (opened_square_brackets == 0 && buf[buff_length - 1] != '\\')
             {// variable: type (without initialization)
-                memmove(&buf[colon_index], &fallback_buffer, fallback_buffer_size);
-                buff_length = colon_index + fallback_buffer_size;
+                memmove(buf + colon_index, fallback_buffer, fallback_buffer_length);
+                buff_length = colon_index + fallback_buffer_length;
                 buf[buff_length] = '\0';
                 fout << buf;
                 goto update_counters_and_buffer;
@@ -1284,7 +1298,7 @@ process_file_internal(
 
             if (is_debug_mode) {
                 printf(
-                    "Line: %u;\nTerm: '%s'; Buff length: %llu;\nColon colon operators starts: %u\n'{' - '}' on line count: %d;\n'[' - ']' on line count: %d;\n'{' counts: %d\n'[' counts: %d\n\n",
+                    "Line: %u;\nTerm: '%s'; Buff length: %llu;\nColon operators starts: %u\n'{' - '}' on line count: %d;\n'[' - ']' on line count: %d;\n'{' counts: %d\n'[' counts: %d\n\n",
                     lines_count,
                     buf,
                     buff_length,
@@ -1328,8 +1342,12 @@ process_file_internal(
     fout.flush();
 
     dispose_resources:
-    delete[](buf);
-    delete[](fallback_buffer);
+    if (buf) {
+        delete[](buf);
+    }
+    if (fallback_buffer) {
+        delete[](fallback_buffer);
+    }
 
     return current_state;
 }
@@ -1370,7 +1388,7 @@ ErrorCodes process_file(
         fin.close();
         if (is_verbose_mode) {
             std::clog << "Was not able to open temporary file " << tmp_file_name << '\n';
-        };
+        }
 
         return ErrorCodes::tmp_file_open_error;
     }
@@ -1380,11 +1398,10 @@ ErrorCodes process_file(
     tmp_fout.close();
 
     if (fin.bad()) {
-        ret_code |= ErrorCodes::src_file_io_error;
         if (is_verbose_mode) {
             std::clog << "Input file stream (src code) got bad bit: 'Error on stream (such as when this function catches an exception thrown by an internal operation).'\n";
         }
-        return ret_code;
+        return ret_code |= ErrorCodes::src_file_io_error;
     }
 
     if (ret_code != ErrorCodes::no_errors) {
@@ -1429,7 +1446,7 @@ ErrorCodes process_file(
         }
     }
     else if (is_verbose_mode) {
-        std::cout << "Processed version is copied to the " << tmp_file_name << '\n';
+        std::cout << "Processed version of the " << input_filename << " is copied to the " << tmp_file_name << '\n';
     }
 
     return ret_code;

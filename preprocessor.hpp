@@ -38,7 +38,8 @@ enum class ErrorCodes : uint32_t {
     tmp_file_open_error                     = 1 << 16,
     tmp_file_delete_error                   = 1 << 17,
     overwrite_error                         = 1 << 18,
-    single_file_process_error               = 1 << 19 /* Can only occur while processing many files at once. */
+    single_file_process_error               = 1 << 19, /* Can only occur while processing many files at once. */
+    memory_allocating_error                 = 1 << 20
 };
 
 inline constexpr ErrorCodes
