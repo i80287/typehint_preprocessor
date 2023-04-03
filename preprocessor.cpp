@@ -17,7 +17,7 @@ using std::size_t;
 using std::uint32_t;
 
 /* must be power of two. */
-static constexpr size_t MAX_BUFF_SIZE = 2048;
+static constexpr size_t MAX_BUFF_SIZE = 8192;
 static_assert((MAX_BUFF_SIZE & (MAX_BUFF_SIZE - 1)) == 0);
 
 #define Check_BuffLen(buff_length) \
@@ -26,10 +26,11 @@ static_assert((MAX_BUFF_SIZE & (MAX_BUFF_SIZE - 1)) == 0);
 #define Check_BuffLen_Reserve(buff_length, additional_reserve)\
     static_assert(std::is_same<decltype(buff_length), size_t>::value); \
     if ((buff_length + (size_t)additional_reserve) & (~(MAX_BUFF_SIZE - 1))) {\
-        if ((preprocessor_flags & PreprocessorFlags::verbose) != PreprocessorFlags::no_flags) {\
-            std::clog << "Max buffer size is reached at line " << lines_count << '\n';\
+        if (is_verbose_mode) {\
+            fprintf(stderr, "Max buffer size is reached at line %u\nCurrent term is '%s'\n", lines_count, buf);\
         }\
-        return current_state |= ErrorCodes::preprocessor_line_buffer_overflow;\
+        current_state |= ErrorCodes::preprocessor_line_buffer_overflow;\
+        goto dispose_resources;\
     }
 
 #define Assert(expression, message, error_code) \
@@ -39,8 +40,8 @@ static_assert((MAX_BUFF_SIZE & (MAX_BUFF_SIZE - 1)) == 0);
             std::clog << "Assertion error. Error message:\n" << message << '\n';\
         }\
         current_state |= error_code;\
-        if (is_continue_on_error) {\
-            return current_state;\
+        if (!is_stop_on_error) {\
+            goto dispose_resources;\
         }\
     }
 
@@ -50,8 +51,8 @@ static_assert((MAX_BUFF_SIZE & (MAX_BUFF_SIZE - 1)) == 0);
             fprintf(stderr, __VA_ARGS__);\
         }\
         current_state |= error_code;\
-        if (is_continue_on_error) {\
-            return current_state;\
+        if (is_stop_on_error) {\
+            goto dispose_resources;\
         }\
     }\
 
@@ -282,7 +283,7 @@ process_file_internal(
 ) {
     const bool is_debug_mode = (preprocessor_flags & PreprocessorFlags::debug) != PreprocessorFlags::no_flags;
     const bool is_verbose_mode = (preprocessor_flags & PreprocessorFlags::verbose) != PreprocessorFlags::no_flags;
-    const bool is_continue_on_error = (preprocessor_flags & PreprocessorFlags::continue_on_error) == PreprocessorFlags::no_flags;
+    const bool is_stop_on_error = (preprocessor_flags & PreprocessorFlags::continue_on_error) == PreprocessorFlags::no_flags;
     ErrorCodes current_state = ErrorCodes::no_errors;
     
     /* Indexes of ':' , '{', '}', '[', ']' in term.*/
@@ -294,8 +295,8 @@ process_file_internal(
     symbols_indexes[4].reserve(8);
 
     size_t buff_length = 0;
-    char buf[MAX_BUFF_SIZE] {};
-    char fallback_buffer[MAX_BUFF_SIZE] {};
+    char *const buf = new char[MAX_BUFF_SIZE];
+    char *const fallback_buffer = new char[MAX_BUFF_SIZE];
 
     uint32_t colon_operators_starts = 0;
     int dict_or_set_init_starts = 0;
@@ -1052,7 +1053,8 @@ process_file_internal(
                 std::clog << "Got EOF instead of function initialization end symbol ':' at line " << lines_count << "\nFile processing cant be continued\n";
             }
 
-            return current_state |= ErrorCodes::function_return_type_hint_parse_error;
+            current_state |= ErrorCodes::function_return_type_hint_parse_error;
+            goto dispose_resources;
         }
 #ifdef _MSC_VER
 #pragma endregion Function_parsing
@@ -1324,6 +1326,11 @@ process_file_internal(
     }
 
     fout.flush();
+
+    dispose_resources:
+    delete[](buf);
+    delete[](fallback_buffer);
+
     return current_state;
 }
 
@@ -1434,38 +1441,26 @@ ErrorCodes process_files(
     const PreprocessorFlags preprocessor_flags
 ) {
     const bool is_verbose_mode = (preprocessor_flags & PreprocessorFlags::verbose) != PreprocessorFlags::no_flags;
-    const bool is_continue_on_error = (preprocessor_flags & PreprocessorFlags::continue_on_error) == PreprocessorFlags::no_flags;
     size_t processed_files = 0;
     const size_t total_files = filenames.size();
     ErrorCodes current_state = ErrorCodes::no_errors;
     
     for (const auto& filename : filenames) {
-        const bool exists = std::filesystem::exists(filename);
-        AssertWithArgs(
-            exists,
-            ErrorCodes::src_file_open_error,
-            "Could not open file '%s'\n",
-            filename.c_str()
-        )
-        if (!exists) {
+        if (!std::filesystem::exists(filename)) {
+            current_state |= ErrorCodes::src_file_open_error;
+            if (is_verbose_mode) {
+                fprintf(stderr, "Could not open file '%s'\n", filename.c_str());\
+            }
             continue;
         }
 
         const ErrorCodes file_process_ret_code = process_file(filename, ignored_functions, preprocessor_flags);
         ++processed_files;
         current_state |= file_process_ret_code;
-        const bool no_errors = file_process_ret_code == ErrorCodes::no_errors;
-        AssertWithArgs(
-            no_errors,
-            ErrorCodes::single_file_process_error,
-            "An error occured while processing %llu / %llu file '%s'\n",
-            processed_files,
-            total_files,
-            filename.c_str()
-        )
-
-        if (is_verbose_mode) {
-            std::cout << processed_files << " / " << total_files << (no_errors ? " file processed successfully\n" : "  file processed with failure\n");
+        if (file_process_ret_code == ErrorCodes::no_errors) {
+            std::cout << processed_files << " / " << total_files << " file processed successfully\n";
+        } else {
+            fprintf(stderr, "An error occured while processing %llu / %llu file '%s'\n", processed_files, total_files, filename.c_str());
         }
     }
 
