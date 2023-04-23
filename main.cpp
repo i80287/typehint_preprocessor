@@ -17,7 +17,7 @@ int main(int argc, const char **const argv) {
     std::string filename;
     while (files_is) {
         std::getline(files_is, filename);
-        if (filename.size() != 0) {
+        if (!filename.empty()) {
             filenames.insert(filename);
         }
     }
@@ -33,16 +33,21 @@ int main(int argc, const char **const argv) {
     std::string func_name;
     while (functions_is) {
         std::getline(functions_is, func_name);
-        if (func_name.size() != 0) {
+        if (!func_name.empty()) {
             ignored_functions.insert(func_name);
         }
     }
     functions_is.close();
 
-    if (flags == PreprocessorFlags::no_flags) {
-        process_files(filenames, ignored_functions);
+    ErrorCodes ret_code = ErrorCodes::no_errors;
+    if (!flags) {
+        ret_code = process_files(filenames, ignored_functions);
     } else {
-        process_files(filenames, ignored_functions, flags);
+        ret_code = process_files(filenames, ignored_functions, flags);
+    }
+
+    if (!!ret_code) {
+        std::clog << from_error(ret_code);
     }
 
     return 0;

@@ -1,5 +1,5 @@
-#ifndef __PY_TYPEHINT_PREPROCESSOR_H__
-#define __PY_TYPEHINT_PREPROCESSOR_H__ 1
+#ifndef _PY_TYPEHINT_PREPROCESSOR_H_
+#define _PY_TYPEHINT_PREPROCESSOR_H_ 1
 
 #include <fstream>       // ifstream, ofstream
 #include <string>        // string
@@ -21,10 +21,10 @@ enum class ErrorCodes : uint32_t {
     no_errors                               = 1 >> 1,
     preprocessor_line_buffer_overflow       = 1 << 0,
     function_parse_error                    = 1 << 1,
-    function_name_parse_error               = 1 << 2 | function_parse_error,
-    function_argument_parse_error           = 1 << 3 | function_parse_error,
-    function_argument_type_hint_parse_error = 1 << 4 | function_argument_parse_error,
-    function_return_type_hint_parse_error   = 1 << 5 | function_parse_error,
+    function_name_parse_error               = 1 << 2,
+    function_argument_parse_error           = 1 << 3,
+    function_argument_type_hint_parse_error = 1 << 4,
+    function_return_type_hint_parse_error   = 1 << 5,
     unexpected_eof                          = 1 << 6,
     too_much_colon_symbols                  = 1 << 7,
     too_much_closing_curly_brackets         = 1 << 8,
@@ -42,59 +42,75 @@ enum class ErrorCodes : uint32_t {
     memory_allocating_error                 = 1 << 20
 };
 
-inline constexpr ErrorCodes
-operator&(ErrorCodes __a, ErrorCodes __b)
-{ return ErrorCodes(static_cast<uint32_t>(__a) & static_cast<uint32_t>(__b)); }
-
-inline constexpr ErrorCodes
+constexpr ErrorCodes
 operator|(ErrorCodes __a, ErrorCodes __b)
-{ return ErrorCodes(static_cast<uint32_t>(__a) | static_cast<uint32_t>(__b)); }
+{ return static_cast<ErrorCodes>(static_cast<uint32_t>(__a) | static_cast<uint32_t>(__b)); }
 
-inline constexpr ErrorCodes
+constexpr ErrorCodes
+operator&(ErrorCodes __a, ErrorCodes __b)
+{ return static_cast<ErrorCodes>(static_cast<uint32_t>(__a) & static_cast<uint32_t>(__b)); }
+
+constexpr uint32_t
+operator&(ErrorCodes __a, uint32_t __b)
+{ return static_cast<uint32_t>(__a) & __b; }
+
+constexpr ErrorCodes
 operator^(ErrorCodes __a, ErrorCodes __b)
-{ return ErrorCodes(static_cast<uint32_t>(__a) ^ static_cast<uint32_t>(__b)); }
+{ return static_cast<ErrorCodes>(static_cast<uint32_t>(__a) ^ static_cast<uint32_t>(__b)); }
 
-inline constexpr ErrorCodes
+constexpr ErrorCodes
 operator~(ErrorCodes __a)
-{ return ErrorCodes(~static_cast<uint32_t>(__a)); }
+{ return static_cast<ErrorCodes>(~static_cast<uint32_t>(__a)); }
 
-inline constexpr ErrorCodes&
+constexpr bool
+operator!(ErrorCodes __a)
+{ return __a == ErrorCodes::no_errors; }
+
+constexpr ErrorCodes&
 operator|=(ErrorCodes& __a, ErrorCodes __b)
 { return __a = __a | __b; }
 
-inline constexpr ErrorCodes&
+constexpr ErrorCodes&
 operator&=(ErrorCodes& __a, ErrorCodes __b)
 { return __a = __a & __b; }
 
-inline constexpr ErrorCodes&
+constexpr ErrorCodes&
 operator^=(ErrorCodes& __a, ErrorCodes __b)
 { return __a = __a ^ __b; }
 
-inline constexpr PreprocessorFlags
+constexpr PreprocessorFlags
 operator|(PreprocessorFlags __a, PreprocessorFlags __b)
-{ return PreprocessorFlags(static_cast<uint32_t>(__a) | static_cast<uint32_t>(__b)); }
+{ return static_cast<PreprocessorFlags>(static_cast<uint32_t>(__a) | static_cast<uint32_t>(__b)); }
 
-inline constexpr PreprocessorFlags
+constexpr PreprocessorFlags
 operator&(PreprocessorFlags __a, PreprocessorFlags __b)
-{ return PreprocessorFlags(static_cast<uint32_t>(__a) & static_cast<uint32_t>(__b)); }
+{ return static_cast<PreprocessorFlags>(static_cast<uint32_t>(__a) & static_cast<uint32_t>(__b)); }
 
-inline constexpr PreprocessorFlags
+constexpr uint32_t
+operator&(PreprocessorFlags __a, uint32_t __b)
+{ return static_cast<uint32_t>(__a) & __b; }
+
+constexpr PreprocessorFlags
 operator^(PreprocessorFlags __a, PreprocessorFlags __b)
-{ return PreprocessorFlags(static_cast<uint32_t>(__a) ^ static_cast<uint32_t>(__b)); }
+{ return static_cast<PreprocessorFlags>(static_cast<uint32_t>(__a) ^ static_cast<uint32_t>(__b)); }
 
-inline constexpr PreprocessorFlags
+constexpr PreprocessorFlags
 operator~(PreprocessorFlags __a)
-{ return PreprocessorFlags(~static_cast<uint32_t>(__a)); }
+{ return static_cast<PreprocessorFlags>(~static_cast<uint32_t>(__a)); }
 
-inline constexpr PreprocessorFlags&
+constexpr bool
+operator!(PreprocessorFlags __a)
+{ return __a == PreprocessorFlags::no_flags; }
+
+constexpr PreprocessorFlags&
 operator|=(PreprocessorFlags& __a, PreprocessorFlags __b)
 { return __a = __a | __b; }
 
-inline constexpr PreprocessorFlags&
+constexpr PreprocessorFlags&
 operator&=(PreprocessorFlags& __a, PreprocessorFlags __b)
 { return __a = __a & __b; }
 
-inline constexpr PreprocessorFlags&
+constexpr PreprocessorFlags&
 operator^=(PreprocessorFlags& __a, PreprocessorFlags __b)
 { return __a = __a ^ __b; }
 
