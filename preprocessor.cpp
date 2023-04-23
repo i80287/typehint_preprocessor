@@ -56,9 +56,9 @@ static_assert((MAX_BUFF_SIZE & (MAX_BUFF_SIZE - 1)) == 0);
         }\
     }\
 
-#define check_newline_char if (curr_char == '\n' || curr_char == '\r') { ++late_line_increase_counter; }
+#define check_newline_char do { if (curr_char == '\n' || curr_char == '\r') { ++late_line_increase_counter; } } while (false)
 
-static inline bool count_symbols(const char *buf, const size_t length, std::vector<size_t> *symbols_indexes, size_t &equal_operator_index) {
+static inline bool count_symbols(const char *buf, const size_t length, std::vector<size_t> symbols_indexes[5], size_t &equal_operator_index) {
     bool contains_lambda = false;
     bool is_string_opened = false;
     bool is_comment_opened = false;
@@ -154,7 +154,7 @@ static inline bool count_symbols(const char *buf, const size_t length, std::vect
     return contains_lambda;
 }
 
-static inline constexpr void clear_symbols_vects(std::vector<size_t> *symbols_indexes) {
+static inline constexpr void clear_symbols_vects(std::vector<size_t> symbols_indexes[5]) {
     symbols_indexes[0].clear();
     symbols_indexes[1].clear();
     symbols_indexes[2].clear();
@@ -278,14 +278,27 @@ static ErrorCodes
 process_file_internal(
     std::ifstream &fin,
     std::ofstream &fout,
-    const std::unordered_set<std::string> &ignored_functions,
+    const std::unordered_set<std::string_view> &ignored_functions,
     const PreprocessorFlags preprocessor_flags
 ) {
     const bool is_debug_mode = (preprocessor_flags & PreprocessorFlags::debug) != PreprocessorFlags::no_flags;
     const bool is_verbose_mode = (preprocessor_flags & PreprocessorFlags::verbose) != PreprocessorFlags::no_flags;
     const bool is_stop_on_error = (preprocessor_flags & PreprocessorFlags::continue_on_error) == PreprocessorFlags::no_flags;
     ErrorCodes current_state = ErrorCodes::no_errors;
-    
+
+    size_t buff_length = 0;
+    char *const buf = new(std::nothrow) char[MAX_BUFF_SIZE];
+    if (!buf) {
+        return ErrorCodes::memory_allocating_error;
+    }
+    char *const fallback_buffer = new(std::nothrow) char[MAX_BUFF_SIZE];
+    if (!fallback_buffer) {
+        if (buf) {
+            delete[](buf);
+        }
+        return ErrorCodes::memory_allocating_error;
+    }
+
     /* Indexes of ':' , '{', '}', '[', ']' in term.*/
     std::vector<size_t> symbols_indexes[5];
     symbols_indexes[0].reserve(8);
@@ -305,19 +318,6 @@ process_file_internal(
     bool is_long_string_opened = false;
     char string_opening_char = '\0';
     uint32_t late_line_increase_counter = 0;
-
-    size_t buff_length = 0;
-    char *const buf = new(std::nothrow) char[MAX_BUFF_SIZE];
-    if (buf == nullptr) {
-        return current_state |= ErrorCodes::memory_allocating_error;
-    }
-    char *const fallback_buffer = new(std::nothrow) char[MAX_BUFF_SIZE];
-    if (fallback_buffer == nullptr) {
-        if (buf) {
-            delete[](buf);
-        }
-        return current_state |= ErrorCodes::memory_allocating_error;
-    }
 
     while ((curr_char = fin.get()) != -1) {
         if (is_not_delim(curr_char) || is_string_opened || is_comment_opened) {
@@ -361,7 +361,7 @@ process_file_internal(
 
                         if (curr_char != string_opening_char)
                         {// Context is """data"some_char... or '''data'some_char...
-                            check_newline_char
+                            check_newline_char;
                             continue;
                         }
 
@@ -378,7 +378,7 @@ process_file_internal(
 
                         if (curr_char != string_opening_char)
                         {// Context is """data""some_char... or '''data''some_char...
-                            check_newline_char
+                            check_newline_char;
                             continue;
                         }
 
@@ -411,7 +411,7 @@ process_file_internal(
 
                 if (curr_char != string_opening_char)
                 {// Context is "some_char... or 'some_char...
-                    check_newline_char
+                    check_newline_char;
                     continue;
                 }
 
@@ -433,7 +433,7 @@ process_file_internal(
                 {// Context is ""some_char... or ''some_char...
                     is_long_string_opened = false;
                     is_string_opened = false;
-                    check_newline_char
+                    check_newline_char;
                 }
                 continue;
             case '\n':
@@ -448,7 +448,7 @@ process_file_internal(
             }
         }
 
-        check_newline_char
+        check_newline_char;
         is_long_string_opened = false;
         is_string_opened = false;
 
@@ -523,7 +523,7 @@ process_file_internal(
                 if (!is_function_accepted_space(curr_char)) {
                     break;
                 }
-                check_newline_char
+                check_newline_char;
             }
             AssertWithArgs(
                 curr_char != -1,
@@ -657,7 +657,7 @@ process_file_internal(
 
                             if (curr_char != string_opening_char)
                             {// Context is """data"some_char... or '''data'some_char...
-                                check_newline_char
+                                check_newline_char;
                                 continue;
                             }
 
@@ -676,7 +676,7 @@ process_file_internal(
 
                             if (curr_char != string_opening_char)
                             {// Context is """data""some_char... or '''data''some_char...
-                                check_newline_char
+                                check_newline_char;
                                 continue;
                             }
 
@@ -715,7 +715,7 @@ process_file_internal(
 
                     if (curr_char != string_opening_char)
                     {// Context is "some_char... or 'some_char...
-                        check_newline_char
+                        check_newline_char;
                         continue;
                     }
 
@@ -841,7 +841,7 @@ process_file_internal(
                     break;
                 }
 
-                check_newline_char
+                check_newline_char;
 
                 Check_BuffLen(buff_length)
                 buf[buff_length++] = (char)curr_char;
@@ -943,7 +943,7 @@ process_file_internal(
 
                             if (curr_char != string_opening_char)
                             {// Context is """data"some_char... or '''data'some_char...
-                                check_newline_char
+                                check_newline_char;
                                 continue;
                             }
 
@@ -962,7 +962,7 @@ process_file_internal(
 
                             if (curr_char != string_opening_char)
                             {// Context is """data""some_char... or '''data''some_char...
-                                check_newline_char
+                                check_newline_char;
                                 continue;
                             }
 
@@ -1002,7 +1002,7 @@ process_file_internal(
 
                         if (curr_char != string_opening_char)
                         {// Context is "some_char... or 'some_char...
-                            check_newline_char
+                            check_newline_char;
                             is_string_opened = true;
                             continue;
                         }
@@ -1027,7 +1027,7 @@ process_file_internal(
                             is_long_string_opened = false;
                             is_string_opened = false;
                             string_opening_char = '\0';
-                            check_newline_char
+                            check_newline_char;
                         }
 
                         if (ignore_function) {
@@ -1144,7 +1144,7 @@ process_file_internal(
 
                             if (curr_char != string_opening_char)
                             {// Context is """data"some_char... or '''data'some_char...
-                                check_newline_char
+                                check_newline_char;
                                 continue;
                             }
 
@@ -1162,7 +1162,7 @@ process_file_internal(
 
                             if (curr_char != string_opening_char)
                             {// Context is """data""some_char... or '''data''some_char...
-                                check_newline_char
+                                check_newline_char;
                                 continue;
                             }
 
@@ -1195,7 +1195,7 @@ process_file_internal(
 
                         if (curr_char != string_opening_char)
                         {// Context is "some_char... or 'some_char...
-                            check_newline_char
+                            check_newline_char;
                             is_string_opened = true;
                             continue;
                         }
@@ -1222,7 +1222,7 @@ process_file_internal(
                             is_long_string_opened = false;
                             is_string_opened = false;
                             string_opening_char = '\0';
-                            check_newline_char
+                            check_newline_char;
                         }
 
                         continue;
@@ -1368,7 +1368,7 @@ std::string generate_tmp_filename(const std::string &filename) {
 
 ErrorCodes process_file(
     const std::string &input_filename,
-    const std::unordered_set<std::string> &ignored_functions,
+    const std::unordered_set<std::string_view> &ignored_functions,
     const PreprocessorFlags preprocessor_flags
 ) {
     const bool is_verbose_mode = (preprocessor_flags & PreprocessorFlags::verbose) != PreprocessorFlags::no_flags;
@@ -1454,7 +1454,7 @@ ErrorCodes process_file(
 
 ErrorCodes process_files(
     const std::unordered_set<std::string> &filenames,
-    const std::unordered_set<std::string> &ignored_functions,
+    const std::unordered_set<std::string_view> &ignored_functions,
     const PreprocessorFlags preprocessor_flags
 ) {
     const bool is_verbose_mode = (preprocessor_flags & PreprocessorFlags::verbose) != PreprocessorFlags::no_flags;
@@ -1466,7 +1466,7 @@ ErrorCodes process_files(
         if (!std::filesystem::exists(filename)) {
             current_state |= ErrorCodes::src_file_open_error;
             if (is_verbose_mode) {
-                fprintf(stderr, "Could not open file '%s'\n", filename.c_str());\
+                fprintf(stderr, "Could not open file '%s'\n", filename.data());\
             }
             continue;
         }

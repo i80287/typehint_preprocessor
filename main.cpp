@@ -29,7 +29,7 @@ int main(int argc, const char **const argv) {
         return 1;
     }
 
-    std::unordered_set<std::string> ignored_functions;
+    std::unordered_set<std::string_view> ignored_functions;
     std::string func_name;
     while (functions_is) {
         std::getline(functions_is, func_name);
@@ -46,9 +46,10 @@ int main(int argc, const char **const argv) {
         ret_code = process_files(filenames, ignored_functions, flags);
     }
 
-    if (!!ret_code) {
-        std::clog << from_error(ret_code);
+    if (!ret_code) {
+        return 0;
     }
 
-    return 0;
+    std::clog << from_error(ret_code);
+    return 1;
 }
