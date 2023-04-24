@@ -158,7 +158,7 @@ static inline bool count_symbols(const char *buf, const size_t length, std::vect
     return contains_lambda;
 }
 
-static inline constexpr void clear_symbols_vects(std::vector<size_t> symbols_indexes[5]) {
+static constexpr void clear_symbols_vects(std::vector<size_t> symbols_indexes[5]) {
     symbols_indexes[0].clear();
     symbols_indexes[1].clear();
     symbols_indexes[2].clear();
@@ -166,7 +166,7 @@ static inline constexpr void clear_symbols_vects(std::vector<size_t> symbols_ind
     symbols_indexes[4].clear();
 }
 
-static inline constexpr bool is_colon_operator(const char *buf, const size_t length) noexcept {
+static constexpr bool is_colon_operator(const char *buf, const size_t length) noexcept {
     switch (buf[0])
     {
     case 'i':
@@ -221,7 +221,7 @@ static inline constexpr bool is_colon_operator(const char *buf, const size_t len
     }
 }
 
-static inline constexpr bool is_not_delim(const char c) noexcept {
+static constexpr bool is_not_delim(const char c) noexcept {
     switch (c) {
     case ' ':
     case '\\':
@@ -235,11 +235,11 @@ static inline constexpr bool is_not_delim(const char c) noexcept {
     }
 }
 
-static inline constexpr bool is_function_defenition(const char *buf, const size_t length) noexcept {
+static constexpr bool is_function_defenition(const char *buf, const size_t length) noexcept {
     return (length == 3) && (buf[0] == 'd' && buf[1] == 'e' && buf[2] == 'f');
 }
 
-static inline constexpr bool is_function_accepted_space(const char c) noexcept {
+static constexpr bool is_function_accepted_space(const char c) noexcept {
     switch (c) {
     case ' ':
     case '\\':
@@ -252,18 +252,18 @@ static inline constexpr bool is_function_accepted_space(const char c) noexcept {
     }
 }
 
-static inline ssize_t bin_search_elem_index_less_then_elem(const std::vector<size_t> &vec, size_t elem) {
+static inline ssize_t bin_search_elem_index_less_then_elem(const std::vector<size_t> &vec, size_t elem) noexcept {
     size_t l = 0;
     size_t r = vec.size();
     if ((r-- == 0) | (elem <= vec[0])) {
-        return (ssize_t)(-1);
+        return static_cast<ssize_t>(-1);
     }
     
     if (elem > vec[r]) {
-        return (ssize_t)(r);
+        return static_cast<ssize_t>(r);
     }
     
-    while (r > l) {
+    while (r != l) {
         size_t m_index = (l + r + 1) >> 1;
         const size_t m_elem = vec[m_index];
         if (m_elem > elem) {
@@ -271,11 +271,11 @@ static inline ssize_t bin_search_elem_index_less_then_elem(const std::vector<siz
         } else if (m_elem != elem) {
             l = m_index;
         } else {
-            return (ssize_t)(--m_index);
+            return static_cast<ssize_t>(--m_index);
         }
     }
 
-    return (ssize_t)(r);
+    return static_cast<ssize_t>(r);
 }
 
 static ErrorCodes
