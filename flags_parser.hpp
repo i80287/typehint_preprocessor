@@ -10,7 +10,7 @@ using std::size_t;
 
 namespace preprocessor_tools {
 
-PreprocessorFlags parse_flags(const size_t argc, const char **const argv);
+PreprocessorFlags parse_flags(const size_t argc, const char **const argv) noexcept;
 
 std::string from_error(const ErrorCodes error_codes);
 

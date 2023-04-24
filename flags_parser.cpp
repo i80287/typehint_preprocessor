@@ -8,7 +8,7 @@ using std::uint32_t;
 
 namespace preprocessor_tools {
 
-static constexpr PreprocessorFlags parse_flag(const char *arg) {
+static constexpr PreprocessorFlags parse_flag(const char *arg) noexcept {
     switch (arg[0]) {
     case 'd':
         if (strcmp(++arg, "ebug") == 0) {
@@ -42,7 +42,7 @@ static constexpr PreprocessorFlags parse_flag(const char *arg) {
     return PreprocessorFlags::no_flags;
 }
 
-PreprocessorFlags parse_flags(const size_t argc, const char **const argv) {
+PreprocessorFlags parse_flags(const size_t argc, const char **const argv) noexcept {
     PreprocessorFlags flags = PreprocessorFlags::no_flags;
 
     for (size_t i = 0; i < argc; ++i) {

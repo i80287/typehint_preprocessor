@@ -46,10 +46,14 @@ int main(int argc, const char **const argv) {
     functions_is.close();
 
     ErrorCodes ret_code = ErrorCodes::no_errors;
-    if (!flags) {
-        ret_code = process_files(filenames, ignored_functions);
-    } else {
-        ret_code = process_files(filenames, ignored_functions, flags);
+    try {
+        if (!flags) {
+            ret_code = process_files(filenames, ignored_functions);
+        } else {
+            ret_code = process_files(filenames, ignored_functions, flags);
+        }
+    } catch(const std::exception& e) {
+        std::cerr << "An error occured: " << e.what() << '\n';
     }
 
     if (!ret_code) {
