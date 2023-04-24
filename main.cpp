@@ -4,6 +4,12 @@
 #include "preprocessor.hpp"
 #include "flags_parser.hpp"
 
+using preprocessor_tools::PreprocessorFlags;
+using preprocessor_tools::ErrorCodes;
+using preprocessor_tools::process_files;
+using preprocessor_tools::parse_flags;
+using preprocessor_tools::from_error;
+
 int main(int argc, const char **const argv) {
     const PreprocessorFlags flags = parse_flags(argc, argv);
 

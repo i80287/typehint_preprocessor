@@ -16,36 +16,34 @@
 using std::size_t;
 using std::uint32_t;
 
-/* must be power of two. */
+namespace preprocessor_tools {
+
+/* 
+ * Max size of the buffer to which each
+ * line from the source file is temporary
+ * copied while parsing.
+ * Must be power of two.
+ */
 static constexpr size_t MAX_BUFF_SIZE = 8192;
-static_assert((MAX_BUFF_SIZE & (MAX_BUFF_SIZE - 1)) == 0);
+static_assert(MAX_BUFF_SIZE != 0 && (MAX_BUFF_SIZE & (MAX_BUFF_SIZE - 1)) == 0);
 
-#define Check_BuffLen(buff_length) \
-    Check_BuffLen_Reserve(buff_length, 0)
+#define CheckBufferLength(buff_length) CheckBufferLengthReserve(buff_length, 0)
 
-#define Check_BuffLen_Reserve(buff_length, additional_reserve)\
+#define CheckBufferLengthReserve(buff_length, additional_reserve)\
+do {\
     static_assert(std::is_same<decltype(buff_length), size_t>::value); \
-    if ((buff_length + (size_t)additional_reserve) & (~(MAX_BUFF_SIZE - 1))) {\
+    if (((buff_length) + static_cast<size_t>(additional_reserve)) & (~(MAX_BUFF_SIZE - 1))) {\
         if (is_verbose_mode) {\
             fprintf(stderr, "Max buffer size is reached at line %u\nCurrent term is '%s'\n", lines_count, buf);\
         }\
         current_state |= ErrorCodes::preprocessor_line_buffer_overflow;\
         goto dispose_resources;\
-    }
+    }\
+} while (false)
 
-#define Assert(expression, message, error_code) \
-    static_assert(std::is_same<decltype((message)[0]), const char&>::value);\
-    if (!(expression)) {\
-        if (is_verbose_mode) {\
-            std::clog << "Assertion error. Error message:\n" << message << '\n';\
-        }\
-        current_state |= error_code;\
-        if (!is_stop_on_error) {\
-            goto dispose_resources;\
-        }\
-    }
-
-#define AssertWithArgs(expression, error_code, ...) \
+#define AssertWithArgs(expression, error_code, ...)\
+do {\
+    static_assert(std::is_same<decltype(error_code), ErrorCodes>::value);\
     if (!(expression)) {\
         if (is_verbose_mode) {\
             fprintf(stderr, __VA_ARGS__);\
@@ -55,8 +53,14 @@ static_assert((MAX_BUFF_SIZE & (MAX_BUFF_SIZE - 1)) == 0);
             goto dispose_resources;\
         }\
     }\
+} while(false)
 
-#define check_newline_char do { if (curr_char == '\n' || curr_char == '\r') { ++late_line_increase_counter; } } while (false)
+#define CheckNewlineChar()\
+do {\
+    if (curr_char == '\n' || curr_char == '\r') {\
+        ++late_line_increase_counter;\
+    }\
+} while (false)
 
 static inline bool count_symbols(const char *buf, const size_t length, std::vector<size_t> symbols_indexes[5], size_t &equal_operator_index) {
     bool contains_lambda = false;
@@ -321,8 +325,8 @@ process_file_internal(
 
     while ((curr_char = fin.get()) != -1) {
         if (is_not_delim(curr_char) || is_string_opened || is_comment_opened) {
-            Check_BuffLen(buff_length)
-            buf[buff_length++] = (char)curr_char;
+            CheckBufferLength(buff_length);
+            buf[buff_length++] = static_cast<char>(curr_char);
 
             if (is_comment_opened) {
                 if (curr_char == '\n' || curr_char == '\r') {
@@ -355,13 +359,13 @@ process_file_internal(
                             ErrorCodes::function_return_type_hint_parse_error,
                             "Got EOF while reading string at line %u. String was not closed.\n",
                             lines_count
-                        )
-                        Check_BuffLen_Reserve(buff_length, 3)
-                        buf[buff_length++] = (char)curr_char;
+                        );
+                        CheckBufferLengthReserve(buff_length, 3);
+                        buf[buff_length++] = static_cast<char>(curr_char);
 
                         if (curr_char != string_opening_char)
                         {// Context is """data"some_char... or '''data'some_char...
-                            check_newline_char;
+                            CheckNewlineChar();
                             continue;
                         }
 
@@ -373,12 +377,12 @@ process_file_internal(
                             ErrorCodes::function_return_type_hint_parse_error,
                             "Got EOF while reading string at line %u. String was not closed.\n",
                             lines_count
-                        )
-                        buf[buff_length++] = (char)curr_char;
+                        );
+                        buf[buff_length++] = static_cast<char>(curr_char);
 
                         if (curr_char != string_opening_char)
                         {// Context is """data""some_char... or '''data''some_char...
-                            check_newline_char;
+                            CheckNewlineChar();
                             continue;
                         }
 
@@ -405,13 +409,13 @@ process_file_internal(
                     "Got EOF while reading opened string at line %u\nCurrent term is '%s'\n",
                     lines_count,
                     buf
-                )
-                Check_BuffLen(buff_length)
-                buf[buff_length++] = (char)curr_char;
+                );
+                CheckBufferLength(buff_length);
+                buf[buff_length++] = static_cast<char>(curr_char);
 
                 if (curr_char != string_opening_char)
                 {// Context is "some_char... or 'some_char...
-                    check_newline_char;
+                    CheckNewlineChar();
                     continue;
                 }
 
@@ -422,8 +426,8 @@ process_file_internal(
                 {// File ended.
                     break;
                 }
-                Check_BuffLen(buff_length)
-                buf[buff_length++] = (char)curr_char;
+                CheckBufferLength(buff_length);
+                buf[buff_length++] = static_cast<char>(curr_char);
 
                 if (curr_char == string_opening_char)
                 {// Context is """... or '''...
@@ -433,7 +437,7 @@ process_file_internal(
                 {// Context is ""some_char... or ''some_char...
                     is_long_string_opened = false;
                     is_string_opened = false;
-                    check_newline_char;
+                    CheckNewlineChar();
                 }
                 continue;
             case '\n':
@@ -448,7 +452,7 @@ process_file_internal(
             }
         }
 
-        check_newline_char;
+        CheckNewlineChar();
         is_long_string_opened = false;
         is_string_opened = false;
 
@@ -471,7 +475,7 @@ process_file_internal(
             "More then one ':' symbol (not walrus operator ':=') in one term is not supported\nCurrent term is '%s' at line %u\n",
             buf,
             lines_count
-        )
+        );
         const bool contains_colon_symbol = colon_indexes_count != 0;
         const size_t colon_index = contains_colon_symbol ? colon_symbols_indexes[0] : buff_length;
 
@@ -480,13 +484,13 @@ process_file_internal(
 
         const int dict_or_set_open_symbols_before_colon_count =
             brackets_can_be_after_colon_symbol
-            ? (int)(bin_search_elem_index_less_then_elem(ds_open_symbols_indexes, colon_index) + 1)
-            : (int)ds_open_symbols_indexes.size();
-        
+            ? static_cast<int>((bin_search_elem_index_less_then_elem(ds_open_symbols_indexes, colon_index) + 1))
+            : static_cast<int>(ds_open_symbols_indexes.size());
+
         const int dict_or_set_close_symbols_before_colon_count =
             brackets_can_be_after_colon_symbol
-            ? (int)(bin_search_elem_index_less_then_elem(ds_close_symbols_indexes, colon_index) + 1)
-            : (int)ds_close_symbols_indexes.size();
+            ? static_cast<int>((bin_search_elem_index_less_then_elem(ds_close_symbols_indexes, colon_index) + 1))
+            : static_cast<int>(ds_close_symbols_indexes.size());
 
         const int dict_or_set_open_minus_close_symbols_before_colon_count = 
             dict_or_set_open_symbols_before_colon_count - dict_or_set_close_symbols_before_colon_count;
@@ -494,14 +498,14 @@ process_file_internal(
         const size_t total_list_or_index_open_symbols = li_open_symbols_indexes.size();
         const int list_or_index_open_symbols_before_colon_count = 
             brackets_can_be_after_colon_symbol
-            ? (int)(bin_search_elem_index_less_then_elem(li_open_symbols_indexes, colon_index) + 1)
-            : (int)total_list_or_index_open_symbols;
+            ? static_cast<int>(bin_search_elem_index_less_then_elem(li_open_symbols_indexes, colon_index) + 1)
+            : static_cast<int>(total_list_or_index_open_symbols);
 
         const size_t total_list_or_index_close_symbols = li_close_symbols_indexes.size();
         const int list_or_index_close_symbols_before_colon_count =
             brackets_can_be_after_colon_symbol
-            ? (int)(bin_search_elem_index_less_then_elem(li_close_symbols_indexes, colon_index) + 1)
-            : (int)li_close_symbols_indexes.size();
+            ? static_cast<int>(bin_search_elem_index_less_then_elem(li_close_symbols_indexes, colon_index) + 1)
+            : static_cast<int>(li_close_symbols_indexes.size());
         
         const int list_or_index_open_minus_close_symbols_before_colon_count = 
             list_or_index_open_symbols_before_colon_count - list_or_index_close_symbols_before_colon_count;
@@ -515,15 +519,15 @@ process_file_internal(
 #pragma region Function_parsing
 #endif
         if (is_function_defenition(buf, buff_length)) {
-            Check_BuffLen(buff_length)
+            CheckBufferLength(buff_length);
             buf[buff_length++] = curr_char; // add delimeter char after 'def'. Probably a ' ' or '\\'
             while ((curr_char = fin.get()) != -1) {
-                Check_BuffLen(buff_length)
-                buf[buff_length++] = (char)curr_char;
+                CheckBufferLength(buff_length);
+                buf[buff_length++] = static_cast<char>(curr_char);
                 if (!is_function_accepted_space(curr_char)) {
                     break;
                 }
-                check_newline_char;
+                CheckNewlineChar();
             }
             AssertWithArgs(
                 curr_char != -1,
@@ -531,16 +535,16 @@ process_file_internal(
                 "Got EOF instead of function name at line %u\nCurrent term is '%s'\n",
                 lines_count,
                 buf
-            )
+            );
 
             std::string function_name;
             function_name.reserve(79);
-            function_name += curr_char;
+            function_name += static_cast<char>(curr_char);
 
             // Read function name.
             while ((curr_char = fin.get()) != -1) {
-                Check_BuffLen(buff_length)
-                buf[buff_length++] = (char)curr_char;
+                CheckBufferLength(buff_length);
+                buf[buff_length++] = static_cast<char>(curr_char);
 
                 if (is_comment_opened) {
                     if (curr_char == '\n' || curr_char == '\r') {
@@ -568,7 +572,7 @@ process_file_internal(
                         ErrorCodes::function_name_parse_error,
                         "String opening chars like ' and \" at line %u are not allowed for function name\n",
                         lines_count
-                    )
+                    );
                     continue;
                 default:
                     function_name += curr_char;
@@ -581,7 +585,7 @@ process_file_internal(
                 "Got EOF instead of function name at line %u\nCurrent term is '%s'\n",
                 lines_count,
                 buf
-            )
+            );
 
             function_name_ended:
             const bool ignore_function = ignored_functions.contains(function_name);
@@ -604,7 +608,7 @@ process_file_internal(
                 ErrorCodes::string_not_closed_error | ErrorCodes::function_argument_parse_error,
                 "Function argument ended but opened string was not closed %u",
                 lines_count
-            )
+            );
 
             while ((curr_char = fin.get()) != -1) {
                 if (is_comment_opened) {
@@ -614,8 +618,8 @@ process_file_internal(
                     }
 
                     if (should_write_to_buf) {
-                        Check_BuffLen(buff_length)
-                        buf[buff_length++] = (char)curr_char;
+                        CheckBufferLength(buff_length);
+                        buf[buff_length++] = static_cast<char>(curr_char);
                     }
 
                     continue;
@@ -624,8 +628,8 @@ process_file_internal(
                 if (is_string_opened)
                 {// This string is part of the type hint.
                     if (should_write_to_buf) {
-                        Check_BuffLen_Reserve(buff_length, 3)
-                        buf[buff_length++] = (char)curr_char;
+                        CheckBufferLengthReserve(buff_length, 3);
+                        buf[buff_length++] = static_cast<char>(curr_char);
                     }
 
                     if (curr_char == '\'' || curr_char == '\"')
@@ -649,15 +653,15 @@ process_file_internal(
                                 ErrorCodes::function_return_type_hint_parse_error,
                                 "Got EOF while reading string at line %u. String was not closed.\n",
                                 lines_count
-                            )
+                            );
                             
                             if (should_write_to_buf) {
-                                buf[buff_length++] = (char)curr_char;
+                                buf[buff_length++] = static_cast<char>(curr_char);
                             }
 
                             if (curr_char != string_opening_char)
                             {// Context is """data"some_char... or '''data'some_char...
-                                check_newline_char;
+                                CheckNewlineChar();
                                 continue;
                             }
 
@@ -669,14 +673,14 @@ process_file_internal(
                                 ErrorCodes::function_return_type_hint_parse_error,
                                 "Got EOF while reading string at line %u. String was not closed.\n",
                                 lines_count
-                            )
+                            );
                             if (should_write_to_buf) {
-                                buf[buff_length++] = (char)curr_char;
+                                buf[buff_length++] = static_cast<char>(curr_char);
                             }
 
                             if (curr_char != string_opening_char)
                             {// Context is """data""some_char... or '''data''some_char...
-                                check_newline_char;
+                                CheckNewlineChar();
                                 continue;
                             }
 
@@ -694,9 +698,9 @@ process_file_internal(
                 case '\"':
                     // Context is "... or '...
                     is_string_opened = true;
-                    string_opening_char = curr_char;
+                    string_opening_char = static_cast<char>(curr_char);
                     if (should_write_to_buf) {
-                        buf[buff_length++] = (char)curr_char;
+                        buf[buff_length++] = string_opening_char; // static_cast<char>(curr_char);
                     }
 
                     curr_char = fin.get();
@@ -706,16 +710,16 @@ process_file_internal(
                         "Got EOF while reading opened string at line %u\nCurrent term is '%s'\n",
                         lines_count,
                         buf
-                    )
+                    );
                     
                     if (should_write_to_buf) {
-                        Check_BuffLen_Reserve(buff_length, 2)
-                        buf[buff_length++] = (char)curr_char;
+                        CheckBufferLengthReserve(buff_length, 2);
+                        buf[buff_length++] = static_cast<char>(curr_char);
                     }
 
                     if (curr_char != string_opening_char)
                     {// Context is "some_char... or 'some_char...
-                        check_newline_char;
+                        CheckNewlineChar();
                         continue;
                     }
 
@@ -728,10 +732,10 @@ process_file_internal(
                         "Got EOF while reading opened string in the type hint at line %u\nCurrent term is '%s'\n",
                         lines_count,
                         buf
-                    )
+                    );
 
                     if (should_write_to_buf) {
-                        buf[buff_length++] = (char)curr_char;
+                        buf[buff_length++] = static_cast<char>(curr_char);
                     }
 
                     if (curr_char == string_opening_char)
@@ -760,7 +764,7 @@ process_file_internal(
                     if (opened_square_brackets == 0 && opened_round_brackets == 1)
                     {// Current function arg ended.
                      // Check if we are not in the type hint like dict[int, dict] and not in default arg initialization ctor.
-                        Check_BuffLen(buff_length)
+                        CheckBufferLength(buff_length);
                         buf[buff_length++] = ',';
                         goto function_arg_ended;
                     }
@@ -787,7 +791,7 @@ process_file_internal(
                         ErrorCodes::too_much_closing_round_brackets,
                         "Too much closing round brackets in the function arguments initialization at line %u",
                         lines_count
-                    )
+                    );
                     if (--opened_round_brackets == 0) {
                         goto function_params_initialization_end;
                     }
@@ -812,8 +816,8 @@ process_file_internal(
                 }
 
                 if (should_write_to_buf) {
-                    Check_BuffLen(buff_length)
-                    buf[buff_length++] = (char)curr_char;
+                    CheckBufferLength(buff_length);
+                    buf[buff_length++] = static_cast<char>(curr_char);
                 }
             }
             AssertWithArgs(
@@ -822,10 +826,10 @@ process_file_internal(
                 "Got EOF instead of function args, body or return type at line %u\nCurrent term is '%s'\n",
                 lines_count,
                 buf
-            )
+            );
 
             function_params_initialization_end:           
-            Check_BuffLen_Reserve(buff_length, 2)
+            CheckBufferLengthReserve(buff_length, 2);
             AssertWithArgs(
                 curr_char == ')',
                 ErrorCodes::function_parse_error,
@@ -833,7 +837,7 @@ process_file_internal(
                 curr_char,
                 lines_count,
                 buf
-            )
+            );
             buf[buff_length++] = ')';
 
             while ((curr_char = fin.get()) != -1) {
@@ -841,10 +845,10 @@ process_file_internal(
                     break;
                 }
 
-                check_newline_char;
+                CheckNewlineChar();
 
-                Check_BuffLen(buff_length)
-                buf[buff_length++] = (char)curr_char;
+                CheckBufferLength(buff_length);
+                buf[buff_length++] = static_cast<char>(curr_char);
             }
             AssertWithArgs(
                 curr_char != -1,
@@ -852,7 +856,7 @@ process_file_internal(
                 "Got EOF instead of function body or return type at line %u\nCurrent term is '%s'\n",
                 lines_count,
                 buf
-            )
+            );
 
             if (curr_char == ':') {
                 goto write_buf;
@@ -864,14 +868,14 @@ process_file_internal(
                 curr_char,
                 lines_count,
                 buf
-            )
+            );
             curr_char = fin.get();
             AssertWithArgs(
                 curr_char != -1,
                 ErrorCodes::function_return_type_hint_parse_error,
                 "Got EOF instead of function return type hint at line %u\n",
                 lines_count
-            )
+            );
             AssertWithArgs(
                 curr_char == '>',
                 ErrorCodes::function_return_type_hint_parse_error,
@@ -879,7 +883,7 @@ process_file_internal(
                 curr_char,
                 lines_count,
                 buf
-            )
+            );
 
             is_comment_opened = false;
             is_string_opened = false;
@@ -900,8 +904,8 @@ process_file_internal(
                     }
 
                     if (should_write_to_buf) {
-                        Check_BuffLen(buff_length)
-                        buf[buff_length++] = (char)curr_char;
+                        CheckBufferLength(buff_length);
+                        buf[buff_length++] = static_cast<char>(curr_char);
                     }
 
                     continue;
@@ -910,8 +914,8 @@ process_file_internal(
                 if (is_string_opened)
                 {// This string is part of the type hint.
                     if (ignore_function) {
-                        Check_BuffLen_Reserve(buff_length, 2)
-                        buf[buff_length++] = (char)curr_char;
+                        CheckBufferLengthReserve(buff_length, 2);
+                        buf[buff_length++] = static_cast<char>(curr_char);
                     }
 
                     if (curr_char == '\'' || curr_char == '\"')
@@ -936,14 +940,14 @@ process_file_internal(
                                 ErrorCodes::function_return_type_hint_parse_error,
                                 "Got EOF instead of function return type hint at line %u. String was not closed.\n",
                                 lines_count
-                            )
+                            );
                             if (ignore_function) {
-                                buf[buff_length++] = (char)curr_char;
+                                buf[buff_length++] = static_cast<char>(curr_char);
                             }
 
                             if (curr_char != string_opening_char)
                             {// Context is """data"some_char... or '''data'some_char...
-                                check_newline_char;
+                                CheckNewlineChar();
                                 continue;
                             }
 
@@ -955,14 +959,14 @@ process_file_internal(
                                 ErrorCodes::function_return_type_hint_parse_error,
                                 "Got EOF instead of function return type hint at line %u. String was not closed.\n",
                                 lines_count
-                            )
+                            );
                             if (ignore_function) {
-                                buf[buff_length++] = (char)curr_char;
+                                buf[buff_length++] = static_cast<char>(curr_char);
                             }
 
                             if (curr_char != string_opening_char)
                             {// Context is """data""some_char... or '''data''some_char...
-                                check_newline_char;
+                                CheckNewlineChar();
                                 continue;
                             }
 
@@ -980,8 +984,8 @@ process_file_internal(
                 case '\"':
                     {// Context is '... or "...
                         if (ignore_function) {
-                            Check_BuffLen(buff_length)
-                            buf[buff_length++] = (char)curr_char;
+                            CheckBufferLength(buff_length);
+                            buf[buff_length++] = static_cast<char>(curr_char);
                         }
 
                         is_string_opened = true;
@@ -993,16 +997,16 @@ process_file_internal(
                             ErrorCodes::function_return_type_hint_parse_error,
                             "Got EOF instead of function return type hint at line %u. String was not closed.\n",
                             lines_count
-                        )
+                        );
 
                         if (ignore_function) {
-                            Check_BuffLen_Reserve(buff_length, 2)
-                            buf[buff_length++] = (char)curr_char;
+                            CheckBufferLengthReserve(buff_length, 2);
+                            buf[buff_length++] = static_cast<char>(curr_char);
                         }
 
                         if (curr_char != string_opening_char)
                         {// Context is "some_char... or 'some_char...
-                            check_newline_char;
+                            CheckNewlineChar();
                             is_string_opened = true;
                             continue;
                         }
@@ -1016,7 +1020,7 @@ process_file_internal(
                             "Got EOF instead of function return type hint at line %u\nCurrent term is '%s'\n",
                             lines_count,
                             buf
-                        )
+                        );
 
                         if (curr_char == string_opening_char)
                         {// Context is """... or '''...
@@ -1027,11 +1031,11 @@ process_file_internal(
                             is_long_string_opened = false;
                             is_string_opened = false;
                             string_opening_char = '\0';
-                            check_newline_char;
+                            CheckNewlineChar();
                         }
 
                         if (ignore_function) {
-                            buf[buff_length++] = (char)curr_char;
+                            buf[buff_length++] = static_cast<char>(curr_char);
                         }
                         continue;
                     }
@@ -1047,14 +1051,14 @@ process_file_internal(
                 case ' ':
                 case '\\':
                 case '\t':
-                    Check_BuffLen(buff_length)
+                    CheckBufferLength(buff_length);
                     buf[buff_length++] = curr_char;
                     continue;
                 }
 
                 if (ignore_function) {
-                    Check_BuffLen(buff_length)
-                    buf[buff_length++] = (char)curr_char;
+                    CheckBufferLength(buff_length);
+                    buf[buff_length++] = static_cast<char>(curr_char);
                 }
             }
 
@@ -1103,8 +1107,8 @@ process_file_internal(
             
             buff_length = colon_index;
             while ((curr_char = fin.get()) != -1) {
-                Check_BuffLen(fallback_buffer_length)
-                fallback_buffer[fallback_buffer_length++] = (char)curr_char;
+                CheckBufferLength(fallback_buffer_length);
+                fallback_buffer[fallback_buffer_length++] = static_cast<char>(curr_char);
 
                 if (is_comment_opened) {
                     if (curr_char == '\n' || curr_char == '\r') {
@@ -1138,13 +1142,13 @@ process_file_internal(
                                 ErrorCodes::function_return_type_hint_parse_error,
                                 "Got EOF instead of type hint end at line %u. String was not closed.\n",
                                 lines_count
-                            )
-                            Check_BuffLen(fallback_buffer_length)
-                            fallback_buffer[fallback_buffer_length++] = (char)curr_char;
+                            );
+                            CheckBufferLength(fallback_buffer_length);
+                            fallback_buffer[fallback_buffer_length++] = static_cast<char>(curr_char);
 
                             if (curr_char != string_opening_char)
                             {// Context is """data"some_char... or '''data'some_char...
-                                check_newline_char;
+                                CheckNewlineChar();
                                 continue;
                             }
 
@@ -1156,13 +1160,13 @@ process_file_internal(
                                 ErrorCodes::unexpected_eof,
                                 "Got EOF instead of type hint end at line %u. String was not closed.\n",
                                 lines_count
-                            )
-                            Check_BuffLen(fallback_buffer_length)
-                            fallback_buffer[fallback_buffer_length++] = (char)curr_char;
+                            );
+                            CheckBufferLength(fallback_buffer_length);
+                            fallback_buffer[fallback_buffer_length++] = static_cast<char>(curr_char);
 
                             if (curr_char != string_opening_char)
                             {// Context is """data""some_char... or '''data''some_char...
-                                check_newline_char;
+                                CheckNewlineChar();
                                 continue;
                             }
 
@@ -1189,13 +1193,13 @@ process_file_internal(
                             "Got EOF instead of type hint end at line %u\nCurrent term is '%s'\n",
                             lines_count,
                             buf
-                        )
-                        Check_BuffLen(fallback_buffer_length)
-                        fallback_buffer[fallback_buffer_length++] = (char)curr_char;
+                        );
+                        CheckBufferLength(fallback_buffer_length);
+                        fallback_buffer[fallback_buffer_length++] = static_cast<char>(curr_char);
 
                         if (curr_char != string_opening_char)
                         {// Context is "some_char... or 'some_char...
-                            check_newline_char;
+                            CheckNewlineChar();
                             is_string_opened = true;
                             continue;
                         }
@@ -1209,9 +1213,9 @@ process_file_internal(
                             "Got EOF instead of type hint end at line %u\nCurrent term is '%s'\n",
                             lines_count,
                             buf
-                        )
-                        Check_BuffLen(fallback_buffer_length)
-                        fallback_buffer[fallback_buffer_length++] = (char)curr_char;
+                        );
+                        CheckBufferLength(fallback_buffer_length);
+                        fallback_buffer[fallback_buffer_length++] = static_cast<char>(curr_char);
 
                         if (curr_char == string_opening_char)
                         {// Context is """... or '''...
@@ -1222,7 +1226,7 @@ process_file_internal(
                             is_long_string_opened = false;
                             is_string_opened = false;
                             string_opening_char = '\0';
-                            check_newline_char;
+                            CheckNewlineChar();
                         }
 
                         continue;
@@ -1247,7 +1251,7 @@ process_file_internal(
                 case ' ':
                 case '\\':
                 case '\t':
-                    Check_BuffLen(buff_length)
+                    CheckBufferLength(buff_length);
                     buf[buff_length++] = curr_char;
                     continue;
                 case '[':
@@ -1260,7 +1264,7 @@ process_file_internal(
                         "Closing bracket ']' without opened one at line %u\nCurrent term is '%s'\n",
                         lines_count,
                         buf
-                    )
+                    );
                     --opened_square_brackets;
                     continue;
                 }
@@ -1281,7 +1285,7 @@ process_file_internal(
                 "Got EOF instead of type hint end at line %u\nCurrent term is '%s'\n",
                 lines_count,
                 buf
-            )
+            );
         }
 
         write_buf:
@@ -1289,7 +1293,7 @@ process_file_internal(
                 buf[buff_length] = '\0';
                 fout << buf;
             }
-            fout << (char)curr_char;
+            fout << static_cast<char>(curr_char);
             goto update_counters_and_buffer;
         
         update_counters_and_buffer:
@@ -1316,14 +1320,14 @@ process_file_internal(
                 "Closing bracket '}' without opened one at line %u\nCurrent term is '%s'\n",
                 lines_count,
                 buf
-            )
+            );
             AssertWithArgs(
                 list_or_index_init_starts >= 0,
                 ErrorCodes::too_much_closing_square_brackets,
                 "Closing bracket ']' without opened one at line %u\nCurrent term is '%s'\n",
                 lines_count,
                 buf
-            )
+            );
 
             lines_count += late_line_increase_counter;
             is_string_opened = false;
@@ -1362,7 +1366,7 @@ std::string generate_tmp_filename(const std::string &filename) {
     if (backslash_index != filename.npos) {
         return "tmp_" + filename.substr(backslash_index + 1);
     }
-    
+
     return "tmp_" + filename;
 }
 
@@ -1404,7 +1408,7 @@ ErrorCodes process_file(
         return ret_code |= ErrorCodes::src_file_io_error;
     }
 
-    if (ret_code != ErrorCodes::no_errors) {
+    if (ret_code) {
         if (is_verbose_mode) {
             std::clog << "An error occured while processing src file " << input_filename << '\n';
         }
@@ -1415,7 +1419,7 @@ ErrorCodes process_file(
         std::cout << "Successfully processed src file " << input_filename << '\n';
     }
 
-    if ((preprocessor_flags & PreprocessorFlags::overwrite_file) != PreprocessorFlags::no_flags) {
+    if (preprocessor_flags & PreprocessorFlags::overwrite_file) {
         std::ofstream re_fin(input_filename, std::ios::binary | std::ios::trunc);
         std::ifstream re_tmp_fout(tmp_file_name, std::ios::binary);
         
@@ -1483,3 +1487,5 @@ ErrorCodes process_files(
 
     return current_state;
 }
+
+} // namespace preprocessor_tools
