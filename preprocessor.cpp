@@ -1422,7 +1422,14 @@ ErrorCodes process_file(
     if (preprocessor_flags & PreprocessorFlags::overwrite_file) {
         std::ofstream re_fin(input_filename, std::ios::binary | std::ios::trunc);
         std::ifstream re_tmp_fout(tmp_file_name, std::ios::binary);
-        
+
+        if (re_fin.bad() || re_tmp_fout.bad()) {
+            if (is_verbose_mode) {
+                std::clog << "An error occured while overwriting tmp file " << tmp_file_name << " to source file " << input_filename << '\n';
+            }
+            return ret_code |= ErrorCodes::overwrite_error;
+        }
+
         re_fin << re_tmp_fout.rdbuf();
         re_fin.close();
         re_tmp_fout.close();
