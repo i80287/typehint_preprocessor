@@ -37,7 +37,7 @@ do {\
             fprintf(stderr, "Max buffer size is reached at line %u\nCurrent term is '%s'\n", lines_count, buf);\
         }\
         current_state |= ErrorCodes::preprocessor_line_buffer_overflow;\
-        goto dispose_resources;\
+        goto dispose_resources_label;\
     }\
 } while (false)
 
@@ -50,7 +50,7 @@ do {\
         }\
         current_state |= error_code;\
         if (is_stop_on_error) {\
-            goto dispose_resources;\
+            goto dispose_resources_label;\
         }\
     }\
 } while(false)
@@ -285,11 +285,6 @@ process_file_internal(
     const std::unordered_set<std::string_view> &ignored_functions,
     const PreprocessorFlags preprocessor_flags
 ) {
-    const bool is_debug_mode = (preprocessor_flags & PreprocessorFlags::debug) != PreprocessorFlags::no_flags;
-    const bool is_verbose_mode = (preprocessor_flags & PreprocessorFlags::verbose) != PreprocessorFlags::no_flags;
-    const bool is_stop_on_error = (preprocessor_flags & PreprocessorFlags::continue_on_error) == PreprocessorFlags::no_flags;
-    ErrorCodes current_state = ErrorCodes::no_errors;
-
     size_t buff_length = 0;
     char *const buf = new(std::nothrow) char[MAX_BUFF_SIZE];
     if (!buf) {
@@ -302,6 +297,11 @@ process_file_internal(
         }
         return ErrorCodes::memory_allocating_error;
     }
+
+    const bool is_debug_mode = (preprocessor_flags & PreprocessorFlags::debug) != PreprocessorFlags::no_flags;
+    const bool is_verbose_mode = (preprocessor_flags & PreprocessorFlags::verbose) != PreprocessorFlags::no_flags;
+    const bool is_stop_on_error = (preprocessor_flags & PreprocessorFlags::continue_on_error) == PreprocessorFlags::no_flags;
+    ErrorCodes current_state = ErrorCodes::no_errors;
 
     /* Indexes of ':' , '{', '}', '[', ']' in term.*/
     std::vector<size_t> symbols_indexes[5];
@@ -556,10 +556,11 @@ process_file_internal(
 
                 switch (curr_char) {
                 case '(':
-                    goto function_name_ended;
+                    goto function_name_ended_label;
                 case '\n':
                 case '\r':
                     ++late_line_increase_counter;
+                    [[fallthrough]];
                 case '\\':
                     continue;
                 case '#':
@@ -587,7 +588,7 @@ process_file_internal(
                 buf
             );
 
-            function_name_ended:
+            function_name_ended_label:
             const bool ignore_function = ignored_functions.contains(function_name);
 
             // Go through function params.
@@ -600,7 +601,7 @@ process_file_internal(
             bool default_value_initialization_started = false;
             bool should_write_to_buf = true;
 
-            function_arg_ended:
+            function_arg_ended_label:
             default_value_initialization_started = false;
             should_write_to_buf = true;
             AssertWithArgs(
@@ -766,7 +767,7 @@ process_file_internal(
                      // Check if we are not in the type hint like dict[int, dict] and not in default arg initialization ctor.
                         CheckBufferLength(buff_length);
                         buf[buff_length++] = ',';
-                        goto function_arg_ended;
+                        goto function_arg_ended_label;
                     }
                     break;
                 case '[':
@@ -793,7 +794,7 @@ process_file_internal(
                         lines_count
                     );
                     if (--opened_round_brackets == 0) {
-                        goto function_params_initialization_end;
+                        goto function_params_initialization_end_label;
                     }
                     break;
                 case ':':
@@ -828,7 +829,7 @@ process_file_internal(
                 buf
             );
 
-            function_params_initialization_end:           
+            function_params_initialization_end_label:           
             CheckBufferLengthReserve(buff_length, 2);
             AssertWithArgs(
                 curr_char == ')',
@@ -859,7 +860,7 @@ process_file_internal(
             );
 
             if (curr_char == ':') {
-                goto write_buf;
+                goto write_buffer_label;
             }
             AssertWithArgs(
                 curr_char == '-',
@@ -1043,7 +1044,7 @@ process_file_internal(
                     is_comment_opened = true;
                     break;
                 case ':':
-                    goto write_buf;
+                    goto write_buffer_label;
                 case '\n':
                 case '\r':
                     ++late_line_increase_counter;
@@ -1067,7 +1068,7 @@ process_file_internal(
             }
 
             current_state |= ErrorCodes::function_return_type_hint_parse_error;
-            goto dispose_resources;
+            goto dispose_resources_label;
         }
 #ifdef _MSC_VER
 #pragma endregion Function_parsing
@@ -1076,25 +1077,25 @@ process_file_internal(
             if (!contains_colon_symbol) {
                 ++colon_operators_starts;
             }
-            goto write_buf;
+            goto write_buffer_label;
         }
         
         if (contains_colon_symbol)
         {// Probably type hint started.
             if (colon_operators_starts != 0) {
                 --colon_operators_starts;
-                goto write_buf;
+                goto write_buffer_label;
             }
             if (is_in_initialization_context
             || (dict_or_set_open_minus_close_symbols_before_colon_count > 0)
             || (list_or_index_open_minus_close_symbols_before_colon_count > 0)) {
-                goto write_buf;
+                goto write_buffer_label;
             }
 
             if (equal_operator_index != buff_length) {
                 memmove(buf + colon_index, buf + equal_operator_index, buff_length - equal_operator_index);
                 buf[colon_index + buff_length - equal_operator_index] = '\0';
-                goto write_buf;
+                goto write_buffer_label;
             }
 
             uint32_t opened_square_brackets =
@@ -1235,7 +1236,7 @@ process_file_internal(
                     is_comment_opened = true;
                     continue;
                 case '=':
-                    goto write_buf;
+                    goto write_buffer_label;
                 case '\n':
                 case '\r':
                     ++late_line_increase_counter;
@@ -1245,7 +1246,7 @@ process_file_internal(
                         buff_length = colon_index + fallback_buffer_length;
                         buf[buff_length] = '\0';
                         fout << buf;
-                        goto update_counters_and_buffer;
+                        goto update_counters_and_buffer_label;
                     }
                     [[fallthrough]];
                 case ' ':
@@ -1276,7 +1277,7 @@ process_file_internal(
                 buff_length = colon_index + fallback_buffer_length;
                 buf[buff_length] = '\0';
                 fout << buf;
-                goto update_counters_and_buffer;
+                goto update_counters_and_buffer_label;
             }
             
             AssertWithArgs(
@@ -1288,15 +1289,15 @@ process_file_internal(
             );
         }
 
-        write_buf:
+        write_buffer_label:
             if (buff_length != 0) {
                 buf[buff_length] = '\0';
                 fout << buf;
             }
             fout << static_cast<char>(curr_char);
-            goto update_counters_and_buffer;
+            goto update_counters_and_buffer_label;
         
-        update_counters_and_buffer:
+        update_counters_and_buffer_label:
             dict_or_set_init_starts += dict_or_set_open_minus_close_symbols_before_colon_count;
             list_or_index_init_starts += list_or_index_open_minus_close_symbols_before_colon_count;
 
@@ -1345,13 +1346,13 @@ process_file_internal(
 
     fout.flush();
 
-    dispose_resources:
-    if (buf) {
-        delete[](buf);
-    }
-    if (fallback_buffer) {
-        delete[](fallback_buffer);
-    }
+    dispose_resources_label:
+        if (buf) {
+            delete[](buf);
+        }
+        if (fallback_buffer) {
+            delete[](fallback_buffer);
+        }
 
     return current_state;
 }
