@@ -46,7 +46,10 @@ do {\
     static_assert(std::is_same<decltype(error_code), ErrorCodes>::value);\
     if (!(expression)) {\
         if (is_verbose_mode) {\
+            const char tmp_char = buf[buff_length];\
+            buf[buff_length] = '\0';\
             fprintf(stderr, __VA_ARGS__);\
+            buf[buff_length] = tmp_char;\
         }\
         current_state |= error_code;\
         if (is_stop_on_error) {\
@@ -62,7 +65,10 @@ do {\
     }\
 } while (false)
 
-static inline bool count_symbols(const char *buf, const size_t length, std::vector<size_t> symbols_indexes[5], size_t &equal_operator_index) {
+static inline bool
+count_symbols(const char *buf, const size_t length, std::vector<size_t> symbols_indexes[5], size_t &equal_operator_index)
+noexcept(noexcept(symbols_indexes[0].push_back(length)))
+{
     bool contains_lambda = false;
     bool is_string_opened = false;
     bool is_comment_opened = false;
