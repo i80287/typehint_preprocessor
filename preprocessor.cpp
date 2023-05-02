@@ -27,6 +27,8 @@ namespace preprocessor_tools {
 static constexpr size_t MAX_BUFF_SIZE = 8192;
 static_assert(MAX_BUFF_SIZE != 0 && (MAX_BUFF_SIZE & (MAX_BUFF_SIZE - 1)) == 0);
 
+static constexpr int EofChar = -1;
+
 #define CheckBufferLength(buff_length) CheckBufferLengthReserve(buff_length, 0)
 
 #define CheckBufferLengthReserve(buff_length, additional_reserve)\
@@ -85,7 +87,7 @@ noexcept(noexcept(symbols_indexes[0].push_back(length)))
             }
             continue;
         }
-        
+
         if (is_string_opened)
         {// This string is part of the type hint.
             if (curr_char == '\'' || curr_char == '\"')
@@ -261,17 +263,17 @@ static constexpr bool is_function_accepted_space(const char c) noexcept {
 static inline ssize_t bin_search_elem_index_less_then_elem(const std::vector<size_t> &vec, size_t elem) noexcept {
     size_t l = 0;
     size_t r = vec.size();
-    if ((r-- == 0) | (elem <= vec[0])) {
+    if ((r-- == 0) || (elem <= vec[0])) {
         return static_cast<ssize_t>(-1);
     }
-    
+
     if (elem > vec[r]) {
         return static_cast<ssize_t>(r);
     }
-    
+
     while (r != l) {
         size_t m_index = (l + r + 1) >> 1;
-        const size_t m_elem = vec[m_index];
+        size_t m_elem = vec[m_index];
         if (m_elem > elem) {
             r = --m_index;
         } else if (m_elem != elem) {
@@ -298,9 +300,7 @@ process_file_internal(
     }
     char *const fallback_buffer = new(std::nothrow) char[MAX_BUFF_SIZE];
     if (!fallback_buffer) {
-        if (buf) {
-            delete[](buf);
-        }
+        delete[](buf);
         return ErrorCodes::memory_allocating_error;
     }
 
@@ -329,7 +329,7 @@ process_file_internal(
     char string_opening_char = '\0';
     uint32_t late_line_increase_counter = 0;
 
-    while ((curr_char = fin.get()) != -1) {
+    while ((curr_char = fin.get()) != EofChar) {
         if (is_not_delim(curr_char) || is_string_opened || is_comment_opened) {
             CheckBufferLength(buff_length);
             buf[buff_length++] = static_cast<char>(curr_char);
@@ -361,7 +361,7 @@ process_file_internal(
                     {// Context is like """data"... or '''data'...
                         curr_char = fin.get();
                         AssertWithArgs(
-                            curr_char != -1,
+                            curr_char != EofChar,
                             ErrorCodes::function_return_type_hint_parse_error,
                             "Got EOF while reading string at line %u. String was not closed.\n",
                             lines_count
@@ -379,7 +379,7 @@ process_file_internal(
 
                         curr_char = fin.get();
                         AssertWithArgs(
-                            curr_char != -1,
+                            curr_char != EofChar,
                             ErrorCodes::function_return_type_hint_parse_error,
                             "Got EOF while reading string at line %u. String was not closed.\n",
                             lines_count
@@ -410,7 +410,7 @@ process_file_internal(
 
                 curr_char = fin.get();
                 AssertWithArgs(
-                    curr_char != -1,
+                    curr_char != EofChar,
                     ErrorCodes::function_return_type_hint_parse_error,
                     "Got EOF while reading opened string at line %u\nCurrent term is '%s'\n",
                     lines_count,
@@ -512,7 +512,7 @@ process_file_internal(
             brackets_can_be_after_colon_symbol
             ? static_cast<int>(bin_search_elem_index_less_then_elem(li_close_symbols_indexes, colon_index) + 1)
             : static_cast<int>(li_close_symbols_indexes.size());
-        
+
         const int list_or_index_open_minus_close_symbols_before_colon_count = 
             list_or_index_open_symbols_before_colon_count - list_or_index_close_symbols_before_colon_count;
 
@@ -527,7 +527,7 @@ process_file_internal(
         if (is_function_defenition(buf, buff_length)) {
             CheckBufferLength(buff_length);
             buf[buff_length++] = curr_char; // add delimeter char after 'def'. Probably a ' ' or '\\'
-            while ((curr_char = fin.get()) != -1) {
+            while ((curr_char = fin.get()) != EofChar) {
                 CheckBufferLength(buff_length);
                 buf[buff_length++] = static_cast<char>(curr_char);
                 if (!is_function_accepted_space(curr_char)) {
@@ -536,7 +536,7 @@ process_file_internal(
                 CheckNewlineChar();
             }
             AssertWithArgs(
-                curr_char != -1,
+                curr_char != EofChar,
                 ErrorCodes::function_parse_error,
                 "Got EOF instead of function name at line %u\nCurrent term is '%s'\n",
                 lines_count,
@@ -548,7 +548,7 @@ process_file_internal(
             function_name += static_cast<char>(curr_char);
 
             // Read function name.
-            while ((curr_char = fin.get()) != -1) {
+            while ((curr_char = fin.get()) != EofChar) {
                 CheckBufferLength(buff_length);
                 buf[buff_length++] = static_cast<char>(curr_char);
 
@@ -587,7 +587,7 @@ process_file_internal(
                 }
             }
             AssertWithArgs(
-                curr_char != -1,
+                curr_char != EofChar,
                 ErrorCodes::function_name_parse_error,
                 "Got EOF instead of function name at line %u\nCurrent term is '%s'\n",
                 lines_count,
@@ -617,7 +617,7 @@ process_file_internal(
                 lines_count
             );
 
-            while ((curr_char = fin.get()) != -1) {
+            while ((curr_char = fin.get()) != EofChar) {
                 if (is_comment_opened) {
                     if (curr_char == '\n' || curr_char == '\r') {
                         ++late_line_increase_counter;
@@ -656,7 +656,7 @@ process_file_internal(
                         {// Context is like """data"... or '''data'...
                             curr_char = fin.get();
                             AssertWithArgs(
-                                curr_char != -1,
+                                curr_char != EofChar,
                                 ErrorCodes::function_return_type_hint_parse_error,
                                 "Got EOF while reading string at line %u. String was not closed.\n",
                                 lines_count
@@ -676,7 +676,7 @@ process_file_internal(
 
                             curr_char = fin.get();
                             AssertWithArgs(
-                                curr_char != -1,
+                                curr_char != EofChar,
                                 ErrorCodes::function_return_type_hint_parse_error,
                                 "Got EOF while reading string at line %u. String was not closed.\n",
                                 lines_count
@@ -712,7 +712,7 @@ process_file_internal(
 
                     curr_char = fin.get();
                     AssertWithArgs(
-                        curr_char != -1,
+                        curr_char != EofChar,
                         ErrorCodes::function_return_type_hint_parse_error,
                         "Got EOF while reading opened string at line %u\nCurrent term is '%s'\n",
                         lines_count,
@@ -734,7 +734,7 @@ process_file_internal(
 
                     curr_char = fin.get();
                     AssertWithArgs(
-                        curr_char != -1,
+                        curr_char != EofChar,
                         ErrorCodes::function_return_type_hint_parse_error,
                         "Got EOF while reading opened string in the type hint at line %u\nCurrent term is '%s'\n",
                         lines_count,
@@ -828,7 +828,7 @@ process_file_internal(
                 }
             }
             AssertWithArgs(
-                curr_char != -1,
+                curr_char != EofChar,
                 ErrorCodes::function_parse_error,
                 "Got EOF instead of function args, body or return type at line %u\nCurrent term is '%s'\n",
                 lines_count,
@@ -847,7 +847,7 @@ process_file_internal(
             );
             buf[buff_length++] = ')';
 
-            while ((curr_char = fin.get()) != -1) {
+            while ((curr_char = fin.get()) != EofChar) {
                 if (!is_function_accepted_space(curr_char)) {
                     break;
                 }
@@ -858,7 +858,7 @@ process_file_internal(
                 buf[buff_length++] = static_cast<char>(curr_char);
             }
             AssertWithArgs(
-                curr_char != -1,
+                curr_char != EofChar,
                 ErrorCodes::function_return_type_hint_parse_error,
                 "Got EOF instead of function body or return type at line %u\nCurrent term is '%s'\n",
                 lines_count,
@@ -878,7 +878,7 @@ process_file_internal(
             );
             curr_char = fin.get();
             AssertWithArgs(
-                curr_char != -1,
+                curr_char != EofChar,
                 ErrorCodes::function_return_type_hint_parse_error,
                 "Got EOF instead of function return type hint at line %u\n",
                 lines_count
@@ -903,7 +903,7 @@ process_file_internal(
             }
 
             // Go through function type hint.
-            while ((curr_char = fin.get()) != -1) {
+            while ((curr_char = fin.get()) != EofChar) {
                 if (is_comment_opened) {
                     if (curr_char == '\n' || curr_char == '\r') {
                         ++late_line_increase_counter;
@@ -943,7 +943,7 @@ process_file_internal(
                         {// Context is like """data"... or '''data'...
                             curr_char = fin.get();
                             AssertWithArgs(
-                                curr_char != -1,
+                                curr_char != EofChar,
                                 ErrorCodes::function_return_type_hint_parse_error,
                                 "Got EOF instead of function return type hint at line %u. String was not closed.\n",
                                 lines_count
@@ -962,7 +962,7 @@ process_file_internal(
 
                             curr_char = fin.get();
                             AssertWithArgs(
-                                curr_char != -1,
+                                curr_char != EofChar,
                                 ErrorCodes::function_return_type_hint_parse_error,
                                 "Got EOF instead of function return type hint at line %u. String was not closed.\n",
                                 lines_count
@@ -1000,7 +1000,7 @@ process_file_internal(
 
                         curr_char = fin.get();
                         AssertWithArgs(
-                            curr_char != -1,
+                            curr_char != EofChar,
                             ErrorCodes::function_return_type_hint_parse_error,
                             "Got EOF instead of function return type hint at line %u. String was not closed.\n",
                             lines_count
@@ -1022,7 +1022,7 @@ process_file_internal(
 
                         curr_char = fin.get();
                         AssertWithArgs(
-                            curr_char != -1,
+                            curr_char != EofChar,
                             ErrorCodes::function_return_type_hint_parse_error,
                             "Got EOF instead of function return type hint at line %u\nCurrent term is '%s'\n",
                             lines_count,
@@ -1085,7 +1085,7 @@ process_file_internal(
             }
             goto write_buffer_label;
         }
-        
+
         if (contains_colon_symbol)
         {// Probably type hint started.
             if (colon_operators_starts != 0) {
@@ -1113,7 +1113,7 @@ process_file_internal(
             size_t fallback_buffer_length = 2;
             
             buff_length = colon_index;
-            while ((curr_char = fin.get()) != -1) {
+            while ((curr_char = fin.get()) != EofChar) {
                 CheckBufferLength(fallback_buffer_length);
                 fallback_buffer[fallback_buffer_length++] = static_cast<char>(curr_char);
 
@@ -1145,7 +1145,7 @@ process_file_internal(
                         {// Context is like """data"... or '''data'...
                             curr_char = fin.get();
                             AssertWithArgs(
-                                curr_char != -1,
+                                curr_char != EofChar,
                                 ErrorCodes::function_return_type_hint_parse_error,
                                 "Got EOF instead of type hint end at line %u. String was not closed.\n",
                                 lines_count
@@ -1163,7 +1163,7 @@ process_file_internal(
 
                             curr_char = fin.get();
                             AssertWithArgs(
-                                curr_char != -1,
+                                curr_char != EofChar,
                                 ErrorCodes::unexpected_eof,
                                 "Got EOF instead of type hint end at line %u. String was not closed.\n",
                                 lines_count
@@ -1195,7 +1195,7 @@ process_file_internal(
 
                         curr_char = fin.get();
                         AssertWithArgs(
-                            curr_char != -1,
+                            curr_char != EofChar,
                             ErrorCodes::unexpected_eof,
                             "Got EOF instead of type hint end at line %u\nCurrent term is '%s'\n",
                             lines_count,
@@ -1215,7 +1215,7 @@ process_file_internal(
 
                         curr_char = fin.get();
                         AssertWithArgs(
-                            curr_char != -1,
+                            curr_char != EofChar,
                             ErrorCodes::unexpected_eof,
                             "Got EOF instead of type hint end at line %u\nCurrent term is '%s'\n",
                             lines_count,
@@ -1285,7 +1285,7 @@ process_file_internal(
                 fout << buf;
                 goto update_counters_and_buffer_label;
             }
-            
+
             AssertWithArgs(
                 false,
                 ErrorCodes::unexpected_eof,
@@ -1302,14 +1302,14 @@ process_file_internal(
             }
             fout << static_cast<char>(curr_char);
             goto update_counters_and_buffer_label;
-        
+
         update_counters_and_buffer_label:
             dict_or_set_init_starts += dict_or_set_open_minus_close_symbols_before_colon_count;
             list_or_index_init_starts += list_or_index_open_minus_close_symbols_before_colon_count;
 
             if (is_debug_mode) {
                 printf(
-                    "Line: %u;\nTerm: '%s'; Buff length: %llu;\nColon operators starts: %u\n'{' - '}' on line count: %d;\n'[' - ']' on line count: %d;\n'{' counts: %d\n'[' counts: %d\n\n",
+                    "Line: %u;\nTerm: '%s'; Buff length: %zu;\nColon operators starts: %u\n'{' - '}' on line count: %d;\n'[' - ']' on line count: %d;\n'{' counts: %d\n'[' counts: %d\n\n",
                     lines_count,
                     buf,
                     buff_length,
@@ -1320,7 +1320,7 @@ process_file_internal(
                     list_or_index_init_starts
                 );
             }
-            
+
             AssertWithArgs(
                 dict_or_set_init_starts >= 0,
                 ErrorCodes::too_much_closing_curly_brackets,
@@ -1495,7 +1495,7 @@ ErrorCodes process_files(
         if (file_process_ret_code == ErrorCodes::no_errors) {
             std::cout << processed_files << " / " << total_files << " file processed successfully\n";
         } else {
-            fprintf(stderr, "An error occured while processing %llu / %llu file '%s'\n", processed_files, total_files, filename.c_str());
+            fprintf(stderr, "An error occured while processing %zu / %zu file '%s'\n", processed_files, total_files, filename.c_str());
         }
     }
 
