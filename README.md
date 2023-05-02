@@ -40,17 +40,22 @@ After you made text file(s) and built preprocessor executable file, you can use 
 Also you can add flags when run the program:
 
 - `-overwrite` Will force preprocessor to overwrite files.
+
 This flag is turned off by default and thus preprocessor saves copies of the `.py` files as `tmp_OriginalFilname.py` instead of the overwritting
 
 - `-verbose` Will turn on the basic logging of the processed files and will say if any errors occured during this process.
+
 This flag is turned on by default
 
 - `-debug` Will turn on `-verbose` flag and debug mode additionally. It will print out statistic about
 each line and term processed by the preprocessor. The output can be quite cumbersome
+
 This flag is turned off by default
 
 - `-continue_on_error` Will force preprocessor to continue if any error occured. `This flag is not recommended to use`
+
 This flag is turned off by default
 
 - `-all_disabled` Will disable all flags
+
 This flag is turned off by default
