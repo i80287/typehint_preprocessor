@@ -11,9 +11,11 @@ Text files
 In order to use the preprocessor you need to create file `files.txt` and optionally `ignored_functions.txt`
     
 `files.txt` should contains paths (or names) to the python files
+
 As an example, see `files_example.txt`
 
 If created, `ignored_functions.txt` should contains names of the Python functions that will be ignored by the preprocessor
+
 Typehints for the arguments and return type of these functions will not be removed
 
 Build preprocessor executable file
@@ -25,8 +27,8 @@ To build executable file you can install `make` system and run the following in 
 
 This will run `make` that will read `Makefile` and build the executable file
 
-Also you can manually compile `.cpp` files to the executable.
-For example, following command will compile `.cpp` files to the Windows `.exe` via `g++` with using c++ 2023 standart
+Also you can manually compile `.cpp` files into the executable.
+For example, following command will compile `.cpp` files into the Windows `.exe` via `g++` with using `c++ 2023 standart` (`-std=c++2b` flag)
 
     g++ main.cpp flags_parser.cpp preprocessor.cpp -std=c++2b -O2 -Wall -Wextra -Wcast-align=strict -Wpedantic -Werror -pedantic-errors -I. -o preprocessor.exe
 
