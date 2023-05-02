@@ -1,13 +1,9 @@
-INCLUDE_DIR =../include
-
 OBJDIR=obj
 OBJ_FILES_LIST=main.o flags_parser.o preprocessor.o
 OBJ_FILES=$(patsubst %,$(OBJDIR)/%,$(OBJ_FILES_LIST))
 
-CPP_COMPILER=g++
+CC=g++
 CCFLAGS=-std=c++2b -O2 -Wall -Wextra -Wcast-align=strict -Wpedantic -Werror -pedantic-errors -I.
-
-DEPENDENCIES=flags_parser.hpp preprocessor.hpp
 
 ifeq ($(OS),Windows_NT)
     CCFLAGS += -D WIN32
@@ -45,13 +41,14 @@ else
     endif
 endif
 
+DEPENDENCIES=flags_parser.hpp preprocessor.hpp
 
 $(OBJDIR)/%.o: %.cpp $(DEPENDENCIES)
 	$(MKDIR_CHECKED)
-	$(CPP_COMPILER) -c -o $@ $< $(CCFLAGS)
+	$(CC) -c -o $@ $< $(CCFLAGS)
 
 preprocessor: $(OBJ_FILES)
-	$(CPP_COMPILER) -o $(OUTPUT_FILENAME) $^ $(CCFLAGS)
+	$(CC) -o $(OUTPUT_FILENAME) $^ $(CCFLAGS)
 
 clean:
 	rm -f $(OBJDIR)/*.o
