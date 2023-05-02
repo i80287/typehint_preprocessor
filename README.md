@@ -52,7 +52,7 @@ each line and term processed by the preprocessor. The output can be quite cumber
 
 This flag is turned off by default
 
-- `-continue_on_error` Will force preprocessor to continue if any error occured. `This flag is not recommended to use`
+- `-continue_on_error` Will force preprocessor to continue if any error occured. `Not recommended to use`
 
 This flag is turned off by default
 
