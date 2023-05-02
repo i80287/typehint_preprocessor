@@ -36,7 +36,8 @@ Usage and preprocessor flags
 ----------------------
 
 After you made text file(s) and built preprocessor executable file, you can use it
-Also you can add flags to the preprocessor:
+
+Also you can add flags when run the program:
 
 - -overwrite Will force preprocessor to overwrite files.
 This flag is turned off by default and thus preprocessor saves copies of the `.py` files as `tmp_OriginalFilname.py` instead of the overwritting
