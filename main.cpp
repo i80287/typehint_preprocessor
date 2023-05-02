@@ -29,21 +29,18 @@ int main(int argc, const char **const argv) {
     }
     files_is.close();
 
-    std::ifstream functions_is("ignored_functions.txt");
-    if (functions_is.fail()) {
-        std::clog << "Was not able to open file with functions names\n";
-        return 1;
-    }
-
     std::unordered_set<std::string_view> ignored_functions;
-    std::string func_name;
-    while (functions_is) {
-        std::getline(functions_is, func_name);
-        if (!func_name.empty()) {
-            ignored_functions.insert(func_name);
+    std::ifstream functions_is("ignored_functions.txt");
+    if (!functions_is.fail()) {
+        std::string func_name;
+        while (functions_is) {
+            std::getline(functions_is, func_name);
+            if (!func_name.empty()) {
+                ignored_functions.insert(func_name);
+            }
         }
+        functions_is.close();
     }
-    functions_is.close();
 
     ErrorCodes ret_code = ErrorCodes::no_errors;
     try {
