@@ -2,7 +2,7 @@
 #include <cstring>  // strcmp
 #include <iostream> // std::clog
 
-#include "flags_parser.hpp"
+#include <flags_parser.hpp>
 
 using std::uint32_t;
 

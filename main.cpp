@@ -1,8 +1,8 @@
 #include <iostream> // std::clog
 #include <fstream>  // std::ifstream
 
-#include "preprocessor.hpp"
-#include "flags_parser.hpp"
+#include <preprocessor.hpp>
+#include <flags_parser.hpp>
 
 using preprocessor_tools::PreprocessorFlags;
 using preprocessor_tools::ErrorCodes;
