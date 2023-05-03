@@ -548,8 +548,6 @@ process_file_internal(
         const int list_or_index_open_minus_close_symbols_before_colon_count = 
             list_or_index_open_symbols_before_colon_count - list_or_index_close_symbols_before_colon_count;
 
-        
-
         if (is_in_initialization_context) {
             if (colon_operators_starts != 0 && contains_colon_symbol) {
                 bool will_be_in_initialization_context =
