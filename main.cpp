@@ -29,7 +29,7 @@ int main(int argc, const char **const argv) {
     }
     files_is.close();
 
-    std::unordered_set<std::string_view> ignored_functions;
+    std::unordered_set<std::string> ignored_functions;
     std::ifstream functions_is("ignored_functions.txt");
     if (!functions_is.fail()) {
         std::string func_name;

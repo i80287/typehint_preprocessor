@@ -18,17 +18,6 @@ using std::uint32_t;
 
 namespace preprocessor_tools {
 
-/* 
- * Max size of the buffer to which each
- * line from the source file is temporary
- * copied while parsing.
- * Must be power of two.
- */
-static constexpr size_t MAX_BUFF_SIZE = 8192;
-static_assert(MAX_BUFF_SIZE != 0 && (MAX_BUFF_SIZE & (MAX_BUFF_SIZE - 1)) == 0);
-
-static constexpr int EofChar = -1;
-
 #define CheckBufferLength(buff_length) CheckBufferLengthReserve(buff_length, 0)
 
 #define CheckBufferLengthReserve(buff_length, additional_reserve)\
@@ -67,10 +56,35 @@ do {\
     }\
 } while (false)
 
-static inline bool
-count_symbols(const char *buf, const size_t length, std::vector<size_t> symbols_indexes[5], size_t &equal_operator_index)
-noexcept(noexcept(symbols_indexes[0].push_back(length)))
-{
+/* 
+ * Max size of the buffer to which each
+ * line from the source file is temporary
+ * copied while parsing.
+ * Must be power of two.
+ */
+static constexpr size_t MAX_BUFF_SIZE = 8192;
+static_assert(MAX_BUFF_SIZE != 0 && (MAX_BUFF_SIZE & (MAX_BUFF_SIZE - 1)) == 0);
+
+static constexpr int EofChar = -1;
+
+enum ColonOperator : uint32_t {
+    None = 0,
+    OpIf,
+    OpFor,
+    OpFinally,
+    OpTry,
+    OpElse,
+    OpElif,
+    OpExcept,
+    OpLambda,
+    OpWith,
+    OpWhile,
+    OpCase,
+    OpClass,
+    OpMatch
+};
+
+static inline bool count_symbols(const char *buf, const size_t length, std::vector<size_t> symbols_indexes[5], size_t &equal_operator_index) {
     bool contains_lambda = false;
     bool is_string_opened = false;
     bool is_comment_opened = false;
@@ -166,7 +180,7 @@ noexcept(noexcept(symbols_indexes[0].push_back(length)))
     return contains_lambda;
 }
 
-static constexpr void clear_symbols_vects(std::vector<size_t> symbols_indexes[5]) {
+static constexpr void clear_symbols_vects(std::vector<size_t> symbols_indexes[5]) noexcept {
     symbols_indexes[0].clear();
     symbols_indexes[1].clear();
     symbols_indexes[2].clear();
@@ -174,19 +188,23 @@ static constexpr void clear_symbols_vects(std::vector<size_t> symbols_indexes[5]
     symbols_indexes[4].clear();
 }
 
-static constexpr bool is_colon_operator(const char *buf, const size_t length) noexcept {
+static constexpr bool is_colon_operator(const char *buf, const size_t length, ColonOperator& maybe_op) noexcept {
     switch (buf[0])
     {
     case 'i':
+        maybe_op = ColonOperator::OpIf;
         return ((length == 2) && (buf[1] == 'f'));
     case 'f':
         if (length < 7) {
+            maybe_op = ColonOperator::OpFor;
             return (length == 3) && (buf[1] == 'o') && (buf[2] == 'r');
         }
-        
+
+        maybe_op = ColonOperator::OpFinally;
         return (buf[1] == 'i' && buf[2] == 'n' && buf[3] == 'a' && buf[4] == 'l' && buf[5] == 'l' && buf[6] == 'y') &&
                 ((length == 7) || (length == 8 && buf[7] == ':'));
     case 't':
+        maybe_op = ColonOperator::OpTry;
         return ((length == 3) || (length == 4 && buf[3] == ':')) && (buf[1] == 'r' && buf[2] == 'y');
     case 'e':
         if ((length == 4) || (length == 5)) {
@@ -197,32 +215,42 @@ static constexpr bool is_colon_operator(const char *buf, const size_t length) no
             const char c2 = buf[2];
             const char c3 = buf[3];
             if (c2 == 's' && c3 == 'e') {
+                maybe_op = ColonOperator::OpElse;
                 return (length == 4) || (buf[4] == ':');
             }
 
+            maybe_op = ColonOperator::OpElif;
             return (length == 4) && (c2 == 'i' && c3 == 'f');
         }
+
+        maybe_op = ColonOperator::OpExcept;
         return ((length == 6) || (length == 7 && buf[6] == ':')) &&
             (buf[1] == 'x' && buf[2] == 'c' && buf[3] == 'e' && buf[4] == 'p' && buf[5] == 't');
     case 'l':
+        maybe_op = ColonOperator::OpLambda;
         return ((length == 6) || (length == 7 && buf[6] == ':')) &&
             (buf[1] == 'a' && buf[2] == 'm' && buf[3] == 'b' && buf[4] == 'd' && buf[5] == 'a');
     case 'w':
         if (length == 4) {
+            maybe_op = ColonOperator::OpWith;
             return (buf[1] == 'i' && buf[2] == 't' && buf[3] == 'h');
         }
 
+        maybe_op = ColonOperator::OpWhile;
         return ((length == 5) &&
             (buf[1] == 'h' && buf[2] == 'i' && buf[3] == 'l' && buf[4] == 'e'));
     case 'c':
         if (length == 4) {
+            maybe_op = ColonOperator::OpCase;
             return  (buf[1] == 'a' && buf[2] == 's' && buf[3] == 'e');
         }
 
+        maybe_op = ColonOperator::OpClass;
         return ((length == 5) &&
             (buf[1] == 'l' && buf[2] == 'a' && buf[3] == 's' && buf[4] == 's'));
     case 'm':
-        return  ((length == 5) &&
+        maybe_op = ColonOperator::OpMatch;
+        return ((length == 5) &&
             (buf[1] == 'a' && buf[2] == 't' && buf[3] == 'c' && buf[4] == 'h'));
     default:
         return false;
@@ -290,7 +318,7 @@ static ErrorCodes
 process_file_internal(
     std::ifstream &fin,
     std::ofstream &fout,
-    const std::unordered_set<std::string_view> &ignored_functions,
+    const std::unordered_set<std::string> &ignored_functions,
     const PreprocessorFlags preprocessor_flags
 ) {
     size_t buff_length = 0;
@@ -488,35 +516,61 @@ process_file_internal(
         const bool is_in_initialization_context = (dict_or_set_init_starts > 0) || (list_or_index_init_starts > 0);
         const bool brackets_can_be_after_colon_symbol = contains_colon_symbol && !is_in_initialization_context;
 
-        const int dict_or_set_open_symbols_before_colon_count =
-            brackets_can_be_after_colon_symbol
-            ? static_cast<int>((bin_search_elem_index_less_then_elem(ds_open_symbols_indexes, colon_index) + 1))
-            : static_cast<int>(ds_open_symbols_indexes.size());
+        const size_t total_list_or_index_open_symbols = li_open_symbols_indexes.size();
+        const size_t total_list_or_index_close_symbols = li_close_symbols_indexes.size();
 
-        const int dict_or_set_close_symbols_before_colon_count =
-            brackets_can_be_after_colon_symbol
-            ? static_cast<int>((bin_search_elem_index_less_then_elem(ds_close_symbols_indexes, colon_index) + 1))
-            : static_cast<int>(ds_close_symbols_indexes.size());
+        int list_or_index_open_symbols_before_colon_count = 0;
+        int list_or_index_close_symbols_before_colon_count = 0;
+        int dict_or_set_open_symbols_before_colon_count = 0;
+        int dict_or_set_close_symbols_before_colon_count = 0;
+
+        if (brackets_can_be_after_colon_symbol) {
+            dict_or_set_open_symbols_before_colon_count =
+                static_cast<int>((bin_search_elem_index_less_then_elem(ds_open_symbols_indexes, colon_index) + 1));
+            dict_or_set_close_symbols_before_colon_count =
+                static_cast<int>((bin_search_elem_index_less_then_elem(ds_close_symbols_indexes, colon_index) + 1));
+            list_or_index_open_symbols_before_colon_count =
+                static_cast<int>(bin_search_elem_index_less_then_elem(li_open_symbols_indexes, colon_index) + 1);
+            list_or_index_close_symbols_before_colon_count =
+                static_cast<int>(bin_search_elem_index_less_then_elem(li_close_symbols_indexes, colon_index) + 1);
+        } else {
+            dict_or_set_open_symbols_before_colon_count = static_cast<int>(ds_open_symbols_indexes.size());
+            dict_or_set_close_symbols_before_colon_count = static_cast<int>(ds_close_symbols_indexes.size());
+            list_or_index_open_symbols_before_colon_count =
+                static_cast<int>(total_list_or_index_open_symbols);
+            list_or_index_close_symbols_before_colon_count =
+                static_cast<int>(total_list_or_index_close_symbols);
+        }
 
         const int dict_or_set_open_minus_close_symbols_before_colon_count = 
             dict_or_set_open_symbols_before_colon_count - dict_or_set_close_symbols_before_colon_count;
 
-        const size_t total_list_or_index_open_symbols = li_open_symbols_indexes.size();
-        const int list_or_index_open_symbols_before_colon_count = 
-            brackets_can_be_after_colon_symbol
-            ? static_cast<int>(bin_search_elem_index_less_then_elem(li_open_symbols_indexes, colon_index) + 1)
-            : static_cast<int>(total_list_or_index_open_symbols);
-
-        const size_t total_list_or_index_close_symbols = li_close_symbols_indexes.size();
-        const int list_or_index_close_symbols_before_colon_count =
-            brackets_can_be_after_colon_symbol
-            ? static_cast<int>(bin_search_elem_index_less_then_elem(li_close_symbols_indexes, colon_index) + 1)
-            : static_cast<int>(li_close_symbols_indexes.size());
-
         const int list_or_index_open_minus_close_symbols_before_colon_count = 
             list_or_index_open_symbols_before_colon_count - list_or_index_close_symbols_before_colon_count;
 
+        
+
+        if (is_in_initialization_context) {
+            if (colon_operators_starts != 0 && contains_colon_symbol) {
+                bool will_be_in_initialization_context =
+                    (list_or_index_init_starts + list_or_index_open_minus_close_symbols_before_colon_count) > 0
+                    || (dict_or_set_init_starts + dict_or_set_open_minus_close_symbols_before_colon_count) > 0;
+                if (!will_be_in_initialization_context) {
+                    bool is_colon_symbol_after_initialization_context = 
+                        (li_close_symbols_indexes.empty() || li_close_symbols_indexes.back() < colon_index)
+                        && (ds_close_symbols_indexes.empty() || ds_close_symbols_indexes.back() < colon_index);
+
+                    if (is_colon_symbol_after_initialization_context) {
+                        --colon_operators_starts;
+                    }
+                }
+            }
+
+            clear_symbols_vects(symbols_indexes);
+            goto write_buffer_label;
+        }
         clear_symbols_vects(symbols_indexes);
+
 #ifdef _MSC_VER
 #pragma endregion Special_symbols_counting
 #endif
@@ -582,7 +636,7 @@ process_file_internal(
                     );
                     continue;
                 default:
-                    function_name += curr_char;
+                    function_name += static_cast<char>(curr_char);
                     continue;
                 }
             }
@@ -1079,11 +1133,15 @@ process_file_internal(
 #ifdef _MSC_VER
 #pragma endregion Function_parsing
 #endif
-        if (is_colon_operator(buf, buff_length) || contains_lambda) {
-            if (!contains_colon_symbol) {
-                ++colon_operators_starts;
+        {
+            ColonOperator maybe_op = ColonOperator::None;
+            if (contains_lambda || is_colon_operator(buf, buff_length, maybe_op)) {
+                if (!contains_colon_symbol) {
+                    ++colon_operators_starts;
+                }
+
+                goto write_buffer_label;
             }
-            goto write_buffer_label;
         }
 
         if (contains_colon_symbol)
@@ -1307,9 +1365,9 @@ process_file_internal(
             dict_or_set_init_starts += dict_or_set_open_minus_close_symbols_before_colon_count;
             list_or_index_init_starts += list_or_index_open_minus_close_symbols_before_colon_count;
 
-            if (is_debug_mode) {
+            if (is_debug_mode && buff_length != 0) {
                 printf(
-                    "Line: %u;\nTerm: '%s'; Buff length: %zu;\nColon operators starts: %u\n'{' - '}' on line count: %d;\n'[' - ']' on line count: %d;\n'{' counts: %d\n'[' counts: %d\n\n",
+                    "Line: %u;\nTerm: '%s'; Buff length: %zu;\nColon operators starts: %u\n'{' - '}' on line count: %d;\n'[' - ']' on line count: %d;\n'{' counts: %d\n'[' counts: %d\n; Was in initialization context: %d\n\n",
                     lines_count,
                     buf,
                     buff_length,
@@ -1317,7 +1375,8 @@ process_file_internal(
                     dict_or_set_open_minus_close_symbols_before_colon_count,
                     list_or_index_open_minus_close_symbols_before_colon_count,
                     dict_or_set_init_starts,
-                    list_or_index_init_starts
+                    list_or_index_init_starts,
+                    is_in_initialization_context
                 );
             }
 
@@ -1379,7 +1438,7 @@ std::string generate_tmp_filename(const std::string &filename) {
 
 ErrorCodes process_file(
     const std::string &input_filename,
-    const std::unordered_set<std::string_view> &ignored_functions,
+    const std::unordered_set<std::string> &ignored_functions,
     const PreprocessorFlags preprocessor_flags
 ) {
     const bool is_verbose_mode = (preprocessor_flags & PreprocessorFlags::verbose) != PreprocessorFlags::no_flags;
@@ -1472,7 +1531,7 @@ ErrorCodes process_file(
 
 ErrorCodes process_files(
     const std::unordered_set<std::string> &filenames,
-    const std::unordered_set<std::string_view> &ignored_functions,
+    const std::unordered_set<std::string> &ignored_functions,
     const PreprocessorFlags preprocessor_flags
 ) {
     const bool is_verbose_mode = (preprocessor_flags & PreprocessorFlags::verbose) != PreprocessorFlags::no_flags;
