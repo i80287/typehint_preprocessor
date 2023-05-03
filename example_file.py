@@ -140,6 +140,12 @@ def complex_func(
 ) -> Foo:
     return a
 
+lst1: list[int] = [2 for i in range(10)]
+st2: set[int] = {2 for i in range(10) if i % 50 == 0}
+lst2: list[int] = [2 for i in range(10)]
+st3: set[int] = {2 for i in range(10) if i % 40 == 0 and (b := i % 3)}
+st4: set[int] = {2 for _ in range(10)}
+
 uninit_var1: int
 
 uninit_var2: \
