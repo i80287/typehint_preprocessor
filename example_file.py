@@ -126,6 +126,8 @@ class Foo:
     def __init__(self, arg1: int, arg2: int, arg3: int,arg4: dict[str, str],arg5:str,arg6:str) -> None:
         pass
 
+f3: Foo = Foo(arg1=10, arg2=11, arg3=12, arg4={}, arg5="abc", arg6="def")
+
 def complex_func(
     a: Foo = Foo(
         arg1=38,

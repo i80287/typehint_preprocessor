@@ -125,6 +125,8 @@ class Foo:
     def __init__(self, arg1, arg2, arg3,arg4,arg5,arg6)  :
         pass
 
+f3 = Foo(arg1=10, arg2=11, arg3=12, arg4={}, arg5="abc", arg6="def")
+
 def complex_func(
     a= Foo(
         arg1=38,
@@ -138,6 +140,12 @@ def complex_func(
     )
 )  :
     return a
+
+lst1 = [2 for i in range(10)]
+st2 = {2 for i in range(10) if i % 50 == 0}
+lst2 = [2 for i in range(10)]
+st3 = {2 for i in range(10) if i % 40 == 0 and (b := i % 3)}
+st4 = {2 for _ in range(10)}
 
 uninit_var1: int
 

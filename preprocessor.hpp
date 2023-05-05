@@ -3,10 +3,9 @@
 
 #include <fstream>       // ifstream, ofstream
 #include <string>        // string
-#include <cstdint>       // size_t, uint32_t
+#include <cstdint>       // uint32_t
+#include <cstddef>       // size_t
 #include <unordered_set> // unordered_set<>
-
-using std::uint32_t;
 
 namespace preprocessor_tools {
 

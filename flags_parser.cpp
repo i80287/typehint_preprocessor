@@ -1,4 +1,5 @@
 #include <cstdint>  // uint32_t
+#include <cstddef>  // size_t
 #include <cstring>  // strcmp
 #include <iostream> // std::clog
 

@@ -1,7 +1,8 @@
 #include <fstream>       // ifstream, ofstream
 #include <string>        // string
 #include <cstring>       // memmove
-#include <cstdint>       // size_t, uint32_t
+#include <cstdint>       // uint32_t
+#include <cstddef>       // size_t
 #include <sys/types.h>   // ssize_t
 #include <cstdarg>       // __VA_ARGS__
 #include <cstdio>        // fprintf
@@ -13,19 +14,16 @@
 
 #include <preprocessor.hpp>
 
-using std::size_t;
-using std::uint32_t;
-
 namespace preprocessor_tools {
 
-#define CheckBufferLength(buff_length) CheckBufferLengthReserve(buff_length, 0)
+#define CheckBufferLength(buffer_length) CheckBufferLengthReserve(buffer_length, 0)
 
-#define CheckBufferLengthReserve(buff_length, additional_reserve)\
+#define CheckBufferLengthReserve(buffer_length, additional_reserve)\
 do {\
-    static_assert(std::is_same<decltype(buff_length), size_t>::value); \
-    if (((buff_length) + static_cast<size_t>(additional_reserve)) & (~(MAX_BUFF_SIZE - 1))) {\
+    static_assert(std::is_same<decltype(buffer_length), size_t>::value); \
+    if ((buffer_length) + static_cast<size_t>(additional_reserve) >= MAX_BUFF_SIZE) {\
         if (is_verbose_mode) {\
-            fprintf(stderr, "Max buffer size is reached at line %u\nCurrent term is '%s'\n", lines_count, buf);\
+            fprintf(stderr, "Max buffer size is reached at line %u\nCurrent term is '%s'\n", lines_count, line_buffer);\
         }\
         current_state |= ErrorCodes::preprocessor_line_buffer_overflow;\
         goto dispose_resources_label;\
@@ -37,17 +35,26 @@ do {\
     static_assert(std::is_same<decltype(error_code), ErrorCodes>::value);\
     if (!(expression)) {\
         if (is_verbose_mode) {\
-            const char tmp_char = buf[buff_length];\
-            buf[buff_length] = '\0';\
+            const char tmp_char = line_buffer[buff_length];\
+            line_buffer[buff_length] = '\0';\
             fprintf(stderr, __VA_ARGS__);\
-            buf[buff_length] = tmp_char;\
+            line_buffer[buff_length] = tmp_char;\
         }\
         current_state |= error_code;\
         if (is_stop_on_error) {\
             goto dispose_resources_label;\
         }\
     }\
-} while(false)
+} while (false)
+
+#define Stringify(expression) (#expression)
+
+#define AssertInternal(expression) \
+do { \
+    if (!(expression)) { \
+        fprintf(stderr, "Internal preprocessor error '%s', line %d, file %s", Stringify(expression), __LINE__, __FILE__); \
+    } \
+} while (false)
 
 #define CheckNewlineChar()\
 do {\
@@ -84,17 +91,18 @@ enum ColonOperator : uint32_t {
     OpMatch
 };
 
-static inline bool count_symbols(const char *buf, const size_t length, std::vector<size_t> symbols_indexes[5], size_t &equal_operator_index) {
+static inline bool
+count_symbols(const char *line_buffer, const size_t length, std::vector<size_t> symbols_indexes[5], size_t &equal_operator_index) {
     bool contains_lambda = false;
     bool is_string_opened = false;
     bool is_comment_opened = false;
     bool is_long_string_opened = false;
-    char string_opening_char = '\0'; // will be either '\'' or '\"'
+    int string_opening_char = '\0'; // will be either '\'' or '\"'
     int opened_curly_brackets = 0;
     int opened_square_brackets = 0;
 
     for (size_t i = 0; i != length; ++i) {
-        const char curr_char = buf[i];
+        const int curr_char = line_buffer[i];
         if (is_comment_opened) {
             if (curr_char == '\n' || curr_char == '\r') {
                 is_comment_opened = false;
@@ -114,7 +122,7 @@ static inline bool count_symbols(const char *buf, const size_t length, std::vect
                 // Current char is equal to the char that opened the string.
                 // Context is "data"... or 'data'... or """data"... or '''data'...
 
-                if (!is_long_string_opened || (length + 2 < length && buf[i + 1] == curr_char && buf[i + 2] == curr_char))
+                if (!is_long_string_opened || (length + 2 < length && line_buffer[i + 1] == curr_char && line_buffer[i + 2] == curr_char))
                 {// Context is in the string like 'data'... or "data"...
                  // or
                  // '''data'''... or """data"""... and long string is closed.
@@ -133,14 +141,14 @@ static inline bool count_symbols(const char *buf, const size_t length, std::vect
         case '\'':
         case '\"':
             is_string_opened = true;
-            if (i + 2 < length && buf[i + 1] == curr_char && buf[i + 2] == curr_char) {
+            if (i + 2 < length && line_buffer[i + 1] == curr_char && line_buffer[i + 2] == curr_char) {
                 is_long_string_opened = true;
             }
             string_opening_char = curr_char;
             continue;
         case ':':
-            if (opened_square_brackets <= 0 && opened_curly_brackets <= 0 && (i + 1 == length || buf[i + 1] != '='))
-            {// walrus operator a := 10
+            if (opened_square_brackets <= 0 && opened_curly_brackets <= 0 && (i + 1 == length || line_buffer[i + 1] != '='))
+            {// If not walrus operator "a := 10"
                 symbols_indexes[0].push_back(i);
             }
             continue;
@@ -161,15 +169,15 @@ static inline bool count_symbols(const char *buf, const size_t length, std::vect
             symbols_indexes[4].push_back(i);
             continue;
         case '=':
-            if ((i + 6 < length) && buf[i + 1] == 'l') {
-                if ((buf[i + 2] == 'a') & (buf[i + 3] == 'm') & (buf[i + 4] == 'b') & (buf[i + 5] == 'd') & (buf[i + 6] == 'a')) {
-                    if (i + 7 == length || (i + 8 == length && buf[i + 7] == ':'))
+            if ((i + 6 < length) && line_buffer[i + 1] == 'l') {
+                if ((line_buffer[i + 2] == 'a') & (line_buffer[i + 3] == 'm') & (line_buffer[i + 4] == 'b') & (line_buffer[i + 5] == 'd') & (line_buffer[i + 6] == 'a')) {
+                    if (i + 7 == length || (i + 8 == length && line_buffer[i + 7] == ':'))
                     {// ...=lambda or ...=lambda:
                         contains_lambda = true;
                     }
                 }
             }
-            if (i == 0 || buf[i - 1] != ':') {
+            if (i == 0 || line_buffer[i - 1] != ':') {
                 equal_operator_index = i;
             }
 
@@ -180,7 +188,8 @@ static inline bool count_symbols(const char *buf, const size_t length, std::vect
     return contains_lambda;
 }
 
-static constexpr void clear_symbols_vects(std::vector<size_t> symbols_indexes[5]) noexcept {
+static constexpr void
+clear_symbols_vects(std::vector<size_t> symbols_indexes[5]) noexcept {
     symbols_indexes[0].clear();
     symbols_indexes[1].clear();
     symbols_indexes[2].clear();
@@ -188,35 +197,35 @@ static constexpr void clear_symbols_vects(std::vector<size_t> symbols_indexes[5]
     symbols_indexes[4].clear();
 }
 
-static constexpr bool is_colon_operator(const char *buf, const size_t length, ColonOperator& maybe_op) noexcept {
-    switch (buf[0])
-    {
+static constexpr bool
+is_colon_operator(const char *line_buffer, const size_t length, ColonOperator& maybe_op) noexcept {
+    switch (line_buffer[0]) {
     case 'i':
         maybe_op = ColonOperator::OpIf;
-        return ((length == 2) && (buf[1] == 'f'));
+        return ((length == 2) && (line_buffer[1] == 'f'));
     case 'f':
         if (length < 7) {
             maybe_op = ColonOperator::OpFor;
-            return (length == 3) && (buf[1] == 'o') && (buf[2] == 'r');
+            return (length == 3) && (line_buffer[1] == 'o') && (line_buffer[2] == 'r');
         }
 
         maybe_op = ColonOperator::OpFinally;
-        return (buf[1] == 'i' && buf[2] == 'n' && buf[3] == 'a' && buf[4] == 'l' && buf[5] == 'l' && buf[6] == 'y') &&
-                ((length == 7) || (length == 8 && buf[7] == ':'));
+        return (line_buffer[1] == 'i' && line_buffer[2] == 'n' && line_buffer[3] == 'a' && line_buffer[4] == 'l' && line_buffer[5] == 'l' && line_buffer[6] == 'y') &&
+                ((length == 7) || (length == 8 && line_buffer[7] == ':'));
     case 't':
         maybe_op = ColonOperator::OpTry;
-        return ((length == 3) || (length == 4 && buf[3] == ':')) && (buf[1] == 'r' && buf[2] == 'y');
+        return ((length == 3) || (length == 4 && line_buffer[3] == ':')) && (line_buffer[1] == 'r' && line_buffer[2] == 'y');
     case 'e':
         if ((length == 4) || (length == 5)) {
-            if (buf[1] != 'l') {
+            if (line_buffer[1] != 'l') {
                 return false;
             }
 
-            const char c2 = buf[2];
-            const char c3 = buf[3];
+            const char c2 = line_buffer[2];
+            const char c3 = line_buffer[3];
             if (c2 == 's' && c3 == 'e') {
                 maybe_op = ColonOperator::OpElse;
-                return (length == 4) || (buf[4] == ':');
+                return (length == 4) || (line_buffer[4] == ':');
             }
 
             maybe_op = ColonOperator::OpElif;
@@ -224,40 +233,55 @@ static constexpr bool is_colon_operator(const char *buf, const size_t length, Co
         }
 
         maybe_op = ColonOperator::OpExcept;
-        return ((length == 6) || (length == 7 && buf[6] == ':')) &&
-            (buf[1] == 'x' && buf[2] == 'c' && buf[3] == 'e' && buf[4] == 'p' && buf[5] == 't');
+        return ((length == 6) || (length == 7 && line_buffer[6] == ':')) &&
+            (line_buffer[1] == 'x' && line_buffer[2] == 'c' && line_buffer[3] == 'e' && line_buffer[4] == 'p' && line_buffer[5] == 't');
     case 'l':
         maybe_op = ColonOperator::OpLambda;
-        return ((length == 6) || (length == 7 && buf[6] == ':')) &&
-            (buf[1] == 'a' && buf[2] == 'm' && buf[3] == 'b' && buf[4] == 'd' && buf[5] == 'a');
+        return ((length == 6) || (length == 7 && line_buffer[6] == ':')) &&
+            (line_buffer[1] == 'a' && line_buffer[2] == 'm' && line_buffer[3] == 'b' && line_buffer[4] == 'd' && line_buffer[5] == 'a');
     case 'w':
         if (length == 4) {
             maybe_op = ColonOperator::OpWith;
-            return (buf[1] == 'i' && buf[2] == 't' && buf[3] == 'h');
+            return (line_buffer[1] == 'i' && line_buffer[2] == 't' && line_buffer[3] == 'h');
         }
 
         maybe_op = ColonOperator::OpWhile;
         return ((length == 5) &&
-            (buf[1] == 'h' && buf[2] == 'i' && buf[3] == 'l' && buf[4] == 'e'));
+            (line_buffer[1] == 'h' && line_buffer[2] == 'i' && line_buffer[3] == 'l' && line_buffer[4] == 'e'));
     case 'c':
         if (length == 4) {
             maybe_op = ColonOperator::OpCase;
-            return  (buf[1] == 'a' && buf[2] == 's' && buf[3] == 'e');
+            return  (line_buffer[1] == 'a' && line_buffer[2] == 's' && line_buffer[3] == 'e');
         }
 
         maybe_op = ColonOperator::OpClass;
         return ((length == 5) &&
-            (buf[1] == 'l' && buf[2] == 'a' && buf[3] == 's' && buf[4] == 's'));
+            (line_buffer[1] == 'l' && line_buffer[2] == 'a' && line_buffer[3] == 's' && line_buffer[4] == 's'));
     case 'm':
         maybe_op = ColonOperator::OpMatch;
         return ((length == 5) &&
-            (buf[1] == 'a' && buf[2] == 't' && buf[3] == 'c' && buf[4] == 'h'));
+            (line_buffer[1] == 'a' && line_buffer[2] == 't' && line_buffer[3] == 'c' && line_buffer[4] == 'h'));
     default:
         return false;
     }
 }
 
-static constexpr bool is_not_delim(const char c) noexcept {
+static constexpr bool
+is_space_like(int c) noexcept {
+    switch (c) {
+    case ' ':
+    case '\n':
+    case '\r':
+    case '\t':
+    case '\\':
+        return true;
+    default:
+        return false;
+    }
+}
+
+static constexpr bool
+is_not_delim(int c) noexcept {
     switch (c) {
     case ' ':
     case '\\':
@@ -271,11 +295,13 @@ static constexpr bool is_not_delim(const char c) noexcept {
     }
 }
 
-static constexpr bool is_function_defenition(const char *buf, const size_t length) noexcept {
-    return (length == 3) && (buf[0] == 'd' && buf[1] == 'e' && buf[2] == 'f');
+static constexpr bool
+is_function_defenition(const char *line_buffer, const size_t length) noexcept {
+    return (length == 3) && ((line_buffer[0] == 'd') & (line_buffer[1] == 'e') & (line_buffer[2] == 'f'));
 }
 
-static constexpr bool is_function_accepted_space(const char c) noexcept {
+static constexpr bool
+is_function_accepted_space(int c) noexcept {
     switch (c) {
     case ' ':
     case '\\':
@@ -288,7 +314,8 @@ static constexpr bool is_function_accepted_space(const char c) noexcept {
     }
 }
 
-static inline ssize_t bin_search_elem_index_less_then_elem(const std::vector<size_t> &vec, size_t elem) noexcept {
+static inline ssize_t
+bin_search_elem_index_less_then_elem(const std::vector<size_t> &vec, size_t elem) noexcept {
     size_t l = 0;
     size_t r = vec.size();
     if ((r-- == 0) || (elem <= vec[0])) {
@@ -314,7 +341,7 @@ static inline ssize_t bin_search_elem_index_less_then_elem(const std::vector<siz
     return static_cast<ssize_t>(r);
 }
 
-static ErrorCodes
+static inline ErrorCodes
 process_file_internal(
     std::ifstream &fin,
     std::ofstream &fout,
@@ -322,13 +349,13 @@ process_file_internal(
     const PreprocessorFlags preprocessor_flags
 ) {
     size_t buff_length = 0;
-    char *const buf = new(std::nothrow) char[MAX_BUFF_SIZE];
-    if (!buf) {
+    char *const line_buffer = new(std::nothrow) char[MAX_BUFF_SIZE];
+    if (!line_buffer) {
         return ErrorCodes::memory_allocating_error;
     }
     char *const fallback_buffer = new(std::nothrow) char[MAX_BUFF_SIZE];
     if (!fallback_buffer) {
-        delete[](buf);
+        delete[](line_buffer);
         return ErrorCodes::memory_allocating_error;
     }
 
@@ -350,19 +377,37 @@ process_file_internal(
     int list_or_index_init_starts = 0;
     uint32_t lines_count = 1;
 
-    int curr_char = 0;
     bool is_comment_opened = false;
     bool is_string_opened = false;
     bool is_long_string_opened = false;
-    char string_opening_char = '\0';
+    int string_opening_char = '\0';
     uint32_t late_line_increase_counter = 0;
 
-    while ((curr_char = fin.get()) != EofChar) {
-        if (is_not_delim(curr_char) || is_string_opened || is_comment_opened) {
+    for (int curr_char = '\0';;) {
+        // (curr_char ) != EofChar
+
+        /* Skip whitespace symbols*/
+        while (is_space_like(curr_char = fin.get())) {
             CheckBufferLength(buff_length);
-            buf[buff_length++] = static_cast<char>(curr_char);
+            line_buffer[buff_length++] = curr_char;
+        }
+
+        if (buff_length != 0) {
+            line_buffer[buff_length] = '\0';
+            fout << line_buffer;
+        }
+        buff_length = 0;
+
+        if (curr_char == EofChar) {
+            break;
+        }
+
+        do {
+            CheckBufferLength(buff_length);
+            line_buffer[buff_length++] = static_cast<char>(curr_char);
 
             if (is_comment_opened) {
+                AssertInternal(!is_string_opened);
                 if (curr_char == '\n' || curr_char == '\r') {
                     ++late_line_increase_counter;
                     is_comment_opened = false;
@@ -395,7 +440,7 @@ process_file_internal(
                             lines_count
                         );
                         CheckBufferLengthReserve(buff_length, 3);
-                        buf[buff_length++] = static_cast<char>(curr_char);
+                        line_buffer[buff_length++] = static_cast<char>(curr_char);
 
                         if (curr_char != string_opening_char)
                         {// Context is """data"some_char... or '''data'some_char...
@@ -412,7 +457,7 @@ process_file_internal(
                             "Got EOF while reading string at line %u. String was not closed.\n",
                             lines_count
                         );
-                        buf[buff_length++] = static_cast<char>(curr_char);
+                        line_buffer[buff_length++] = static_cast<char>(curr_char);
 
                         if (curr_char != string_opening_char)
                         {// Context is """data""some_char... or '''data''some_char...
@@ -442,10 +487,10 @@ process_file_internal(
                     ErrorCodes::function_return_type_hint_parse_error,
                     "Got EOF while reading opened string at line %u\nCurrent term is '%s'\n",
                     lines_count,
-                    buf
+                    line_buffer
                 );
                 CheckBufferLength(buff_length);
-                buf[buff_length++] = static_cast<char>(curr_char);
+                line_buffer[buff_length++] = static_cast<char>(curr_char);
 
                 if (curr_char != string_opening_char)
                 {// Context is "some_char... or 'some_char...
@@ -456,12 +501,12 @@ process_file_internal(
                 // Context is ""... or ''...
 
                 curr_char = fin.get();
-                if (curr_char == -1)
+                if (curr_char == EofChar)
                 {// File ended.
                     break;
                 }
                 CheckBufferLength(buff_length);
-                buf[buff_length++] = static_cast<char>(curr_char);
+                line_buffer[buff_length++] = static_cast<char>(curr_char);
 
                 if (curr_char == string_opening_char)
                 {// Context is """... or '''...
@@ -476,6 +521,7 @@ process_file_internal(
                 continue;
             case '\n':
             case '\r':
+                AssertInternal(is_comment_opened);
                 ++late_line_increase_counter;
                 continue;
             case '#':
@@ -484,6 +530,14 @@ process_file_internal(
             default:
                 continue;
             }
+        } while ((is_not_delim(curr_char = fin.get()) || is_string_opened || is_comment_opened) && (curr_char != EofChar));
+
+        if (curr_char == EofChar) {
+            AssertInternal(buff_length != 0);
+            line_buffer[buff_length] = '\0';
+            fout << line_buffer;
+            buff_length = 0;
+            break;
         }
 
         CheckNewlineChar();
@@ -494,7 +548,7 @@ process_file_internal(
 #pragma region Special_symbols_counting
 #endif
         size_t equal_operator_index = buff_length;
-        const bool contains_lambda = count_symbols(buf, buff_length, symbols_indexes, equal_operator_index);
+        const bool contains_lambda = count_symbols(line_buffer, buff_length, symbols_indexes, equal_operator_index);
 
         const auto &colon_symbols_indexes = symbols_indexes[0];
         const auto &ds_open_symbols_indexes = symbols_indexes[1];
@@ -507,7 +561,7 @@ process_file_internal(
             colon_indexes_count <= 1,
             ErrorCodes::too_much_colon_symbols,
             "More then one ':' symbol (not walrus operator ':=') in one term is not supported\nCurrent term is '%s' at line %u\n",
-            buf,
+            line_buffer,
             lines_count
         );
         const bool contains_colon_symbol = colon_indexes_count != 0;
@@ -576,12 +630,11 @@ process_file_internal(
 #ifdef _MSC_VER
 #pragma region Function_parsing
 #endif
-        if (is_function_defenition(buf, buff_length)) {
-            CheckBufferLength(buff_length);
-            buf[buff_length++] = curr_char; // add delimeter char after 'def'. Probably a ' ' or '\\'
+        if (is_function_defenition(line_buffer, buff_length)) {
+            line_buffer[buff_length++] = curr_char; // add delimeter char after 'def'. Probably a ' ' or '\\'
             while ((curr_char = fin.get()) != EofChar) {
                 CheckBufferLength(buff_length);
-                buf[buff_length++] = static_cast<char>(curr_char);
+                line_buffer[buff_length++] = static_cast<char>(curr_char);
                 if (!is_function_accepted_space(curr_char)) {
                     break;
                 }
@@ -592,17 +645,18 @@ process_file_internal(
                 ErrorCodes::function_parse_error,
                 "Got EOF instead of function name at line %u\nCurrent term is '%s'\n",
                 lines_count,
-                buf
+                line_buffer
             );
 
             std::string function_name;
-            function_name.reserve(79);
-            function_name += static_cast<char>(curr_char);
+            constexpr size_t PYTHON_MAX_PEP_VARNAME_LENGTH = 79;
+            function_name.reserve(PYTHON_MAX_PEP_VARNAME_LENGTH);
+            function_name.push_back(static_cast<char>(curr_char));
 
             // Read function name.
             while ((curr_char = fin.get()) != EofChar) {
                 CheckBufferLength(buff_length);
-                buf[buff_length++] = static_cast<char>(curr_char);
+                line_buffer[buff_length++] = static_cast<char>(curr_char);
 
                 if (is_comment_opened) {
                     if (curr_char == '\n' || curr_char == '\r') {
@@ -643,7 +697,7 @@ process_file_internal(
                 ErrorCodes::function_name_parse_error,
                 "Got EOF instead of function name at line %u\nCurrent term is '%s'\n",
                 lines_count,
-                buf
+                line_buffer
             );
 
             function_name_ended_label:
@@ -678,7 +732,7 @@ process_file_internal(
 
                     if (should_write_to_buf) {
                         CheckBufferLength(buff_length);
-                        buf[buff_length++] = static_cast<char>(curr_char);
+                        line_buffer[buff_length++] = static_cast<char>(curr_char);
                     }
 
                     continue;
@@ -688,7 +742,7 @@ process_file_internal(
                 {// This string is part of the type hint.
                     if (should_write_to_buf) {
                         CheckBufferLengthReserve(buff_length, 3);
-                        buf[buff_length++] = static_cast<char>(curr_char);
+                        line_buffer[buff_length++] = static_cast<char>(curr_char);
                     }
 
                     if (curr_char == '\'' || curr_char == '\"')
@@ -715,7 +769,7 @@ process_file_internal(
                             );
                             
                             if (should_write_to_buf) {
-                                buf[buff_length++] = static_cast<char>(curr_char);
+                                line_buffer[buff_length++] = static_cast<char>(curr_char);
                             }
 
                             if (curr_char != string_opening_char)
@@ -734,7 +788,7 @@ process_file_internal(
                                 lines_count
                             );
                             if (should_write_to_buf) {
-                                buf[buff_length++] = static_cast<char>(curr_char);
+                                line_buffer[buff_length++] = static_cast<char>(curr_char);
                             }
 
                             if (curr_char != string_opening_char)
@@ -757,9 +811,9 @@ process_file_internal(
                 case '\"':
                     // Context is "... or '...
                     is_string_opened = true;
-                    string_opening_char = static_cast<char>(curr_char);
+                    string_opening_char = curr_char;
                     if (should_write_to_buf) {
-                        buf[buff_length++] = string_opening_char; // static_cast<char>(curr_char);
+                        line_buffer[buff_length++] = string_opening_char; // static_cast<char>(curr_char);
                     }
 
                     curr_char = fin.get();
@@ -768,12 +822,12 @@ process_file_internal(
                         ErrorCodes::function_return_type_hint_parse_error,
                         "Got EOF while reading opened string at line %u\nCurrent term is '%s'\n",
                         lines_count,
-                        buf
+                        line_buffer
                     );
                     
                     if (should_write_to_buf) {
                         CheckBufferLengthReserve(buff_length, 2);
-                        buf[buff_length++] = static_cast<char>(curr_char);
+                        line_buffer[buff_length++] = static_cast<char>(curr_char);
                     }
 
                     if (curr_char != string_opening_char)
@@ -790,11 +844,11 @@ process_file_internal(
                         ErrorCodes::function_return_type_hint_parse_error,
                         "Got EOF while reading opened string in the type hint at line %u\nCurrent term is '%s'\n",
                         lines_count,
-                        buf
+                        line_buffer
                     );
 
                     if (should_write_to_buf) {
-                        buf[buff_length++] = static_cast<char>(curr_char);
+                        line_buffer[buff_length++] = static_cast<char>(curr_char);
                     }
 
                     if (curr_char == string_opening_char)
@@ -824,7 +878,7 @@ process_file_internal(
                     {// Current function arg ended.
                      // Check if we are not in the type hint like dict[int, dict] and not in default arg initialization ctor.
                         CheckBufferLength(buff_length);
-                        buf[buff_length++] = ',';
+                        line_buffer[buff_length++] = ',';
                         goto function_arg_ended_label;
                     }
                     break;
@@ -837,7 +891,7 @@ process_file_internal(
                         ErrorCodes::function_argument_type_hint_parse_error, 
                         "Too much closing square brackets in the function argument type hint at line %u\nCurrent term is '%s'\n",
                         lines_count,
-                        buf
+                        line_buffer
                     );
                     --opened_square_brackets;
                     break;
@@ -876,7 +930,7 @@ process_file_internal(
 
                 if (should_write_to_buf) {
                     CheckBufferLength(buff_length);
-                    buf[buff_length++] = static_cast<char>(curr_char);
+                    line_buffer[buff_length++] = static_cast<char>(curr_char);
                 }
             }
             AssertWithArgs(
@@ -884,7 +938,7 @@ process_file_internal(
                 ErrorCodes::function_parse_error,
                 "Got EOF instead of function args, body or return type at line %u\nCurrent term is '%s'\n",
                 lines_count,
-                buf
+                line_buffer
             );
 
             function_params_initialization_end_label:           
@@ -895,9 +949,9 @@ process_file_internal(
                 "Expected ')' symbol after function params, got '%c' at line %u\nCurrent term is '%s'\n",
                 curr_char,
                 lines_count,
-                buf
+                line_buffer
             );
-            buf[buff_length++] = ')';
+            line_buffer[buff_length++] = ')';
 
             while ((curr_char = fin.get()) != EofChar) {
                 if (!is_function_accepted_space(curr_char)) {
@@ -907,14 +961,14 @@ process_file_internal(
                 CheckNewlineChar();
 
                 CheckBufferLength(buff_length);
-                buf[buff_length++] = static_cast<char>(curr_char);
+                line_buffer[buff_length++] = static_cast<char>(curr_char);
             }
             AssertWithArgs(
                 curr_char != EofChar,
                 ErrorCodes::function_return_type_hint_parse_error,
                 "Got EOF instead of function body or return type at line %u\nCurrent term is '%s'\n",
                 lines_count,
-                buf
+                line_buffer
             );
 
             if (curr_char == ':') {
@@ -926,7 +980,7 @@ process_file_internal(
                 "Expected '-' symbol for function return type hint construction 'def foo() -> return_type:', got '%c' at line %u\nCurrent term is '%s'\n",
                 curr_char,
                 lines_count,
-                buf
+                line_buffer
             );
             curr_char = fin.get();
             AssertWithArgs(
@@ -941,7 +995,7 @@ process_file_internal(
                 "Expected '>' symbol for function return type hint construction 'def foo() -> return_type:', got '%c' at line %u\nCurrent term is '%s'\n",
                 curr_char,
                 lines_count,
-                buf
+                line_buffer
             );
 
             is_comment_opened = false;
@@ -950,8 +1004,8 @@ process_file_internal(
             string_opening_char = '\0';
 
             if (ignore_function) {
-                buf[buff_length++] = '-';
-                buf[buff_length++] = '>';
+                line_buffer[buff_length++] = '-';
+                line_buffer[buff_length++] = '>';
             }
 
             // Go through function type hint.
@@ -964,7 +1018,7 @@ process_file_internal(
 
                     if (should_write_to_buf) {
                         CheckBufferLength(buff_length);
-                        buf[buff_length++] = static_cast<char>(curr_char);
+                        line_buffer[buff_length++] = static_cast<char>(curr_char);
                     }
 
                     continue;
@@ -974,7 +1028,7 @@ process_file_internal(
                 {// This string is part of the type hint.
                     if (ignore_function) {
                         CheckBufferLengthReserve(buff_length, 2);
-                        buf[buff_length++] = static_cast<char>(curr_char);
+                        line_buffer[buff_length++] = static_cast<char>(curr_char);
                     }
 
                     if (curr_char == '\'' || curr_char == '\"')
@@ -1001,7 +1055,7 @@ process_file_internal(
                                 lines_count
                             );
                             if (ignore_function) {
-                                buf[buff_length++] = static_cast<char>(curr_char);
+                                line_buffer[buff_length++] = static_cast<char>(curr_char);
                             }
 
                             if (curr_char != string_opening_char)
@@ -1020,7 +1074,7 @@ process_file_internal(
                                 lines_count
                             );
                             if (ignore_function) {
-                                buf[buff_length++] = static_cast<char>(curr_char);
+                                line_buffer[buff_length++] = static_cast<char>(curr_char);
                             }
 
                             if (curr_char != string_opening_char)
@@ -1044,7 +1098,7 @@ process_file_internal(
                     {// Context is '... or "...
                         if (ignore_function) {
                             CheckBufferLength(buff_length);
-                            buf[buff_length++] = static_cast<char>(curr_char);
+                            line_buffer[buff_length++] = static_cast<char>(curr_char);
                         }
 
                         is_string_opened = true;
@@ -1060,7 +1114,7 @@ process_file_internal(
 
                         if (ignore_function) {
                             CheckBufferLengthReserve(buff_length, 2);
-                            buf[buff_length++] = static_cast<char>(curr_char);
+                            line_buffer[buff_length++] = static_cast<char>(curr_char);
                         }
 
                         if (curr_char != string_opening_char)
@@ -1078,7 +1132,7 @@ process_file_internal(
                             ErrorCodes::function_return_type_hint_parse_error,
                             "Got EOF instead of function return type hint at line %u\nCurrent term is '%s'\n",
                             lines_count,
-                            buf
+                            line_buffer
                         );
 
                         if (curr_char == string_opening_char)
@@ -1094,7 +1148,7 @@ process_file_internal(
                         }
 
                         if (ignore_function) {
-                            buf[buff_length++] = static_cast<char>(curr_char);
+                            line_buffer[buff_length++] = static_cast<char>(curr_char);
                         }
                         continue;
                     }
@@ -1111,13 +1165,13 @@ process_file_internal(
                 case '\\':
                 case '\t':
                     CheckBufferLength(buff_length);
-                    buf[buff_length++] = curr_char;
+                    line_buffer[buff_length++] = curr_char;
                     continue;
                 }
 
                 if (ignore_function) {
                     CheckBufferLength(buff_length);
-                    buf[buff_length++] = static_cast<char>(curr_char);
+                    line_buffer[buff_length++] = static_cast<char>(curr_char);
                 }
             }
 
@@ -1133,7 +1187,7 @@ process_file_internal(
 #endif
         {
             ColonOperator maybe_op = ColonOperator::None;
-            if (contains_lambda || is_colon_operator(buf, buff_length, maybe_op)) {
+            if (contains_lambda || is_colon_operator(line_buffer, buff_length, maybe_op)) {
                 if (!contains_colon_symbol) {
                     ++colon_operators_starts;
                 }
@@ -1155,8 +1209,8 @@ process_file_internal(
             }
 
             if (equal_operator_index != buff_length) {
-                memmove(buf + colon_index, buf + equal_operator_index, buff_length - equal_operator_index);
-                buf[colon_index + buff_length - equal_operator_index] = '\0';
+                memmove(line_buffer + colon_index, line_buffer + equal_operator_index, buff_length - equal_operator_index);
+                line_buffer[colon_index + buff_length - equal_operator_index] = '\0';
                 goto write_buffer_label;
             }
 
@@ -1255,7 +1309,7 @@ process_file_internal(
                             ErrorCodes::unexpected_eof,
                             "Got EOF instead of type hint end at line %u\nCurrent term is '%s'\n",
                             lines_count,
-                            buf
+                            line_buffer
                         );
                         CheckBufferLength(fallback_buffer_length);
                         fallback_buffer[fallback_buffer_length++] = static_cast<char>(curr_char);
@@ -1275,7 +1329,7 @@ process_file_internal(
                             ErrorCodes::unexpected_eof,
                             "Got EOF instead of type hint end at line %u\nCurrent term is '%s'\n",
                             lines_count,
-                            buf
+                            line_buffer
                         );
                         CheckBufferLength(fallback_buffer_length);
                         fallback_buffer[fallback_buffer_length++] = static_cast<char>(curr_char);
@@ -1302,12 +1356,12 @@ process_file_internal(
                 case '\n':
                 case '\r':
                     ++late_line_increase_counter;
-                    if (opened_square_brackets == 0 && buf[buff_length - 1] != '\\')
+                    if (opened_square_brackets == 0 && line_buffer[buff_length - 1] != '\\')
                     {// variable: type (without initialization)
-                        memmove(buf + colon_index, fallback_buffer, fallback_buffer_length);
+                        memmove(line_buffer + colon_index, fallback_buffer, fallback_buffer_length);
                         buff_length = colon_index + fallback_buffer_length;
-                        buf[buff_length] = '\0';
-                        fout << buf;
+                        line_buffer[buff_length] = '\0';
+                        fout << line_buffer;
                         goto update_counters_and_buffer_label;
                     }
                     [[fallthrough]];
@@ -1315,7 +1369,7 @@ process_file_internal(
                 case '\\':
                 case '\t':
                     CheckBufferLength(buff_length);
-                    buf[buff_length++] = curr_char;
+                    line_buffer[buff_length++] = curr_char;
                     continue;
                 case '[':
                     ++opened_square_brackets;
@@ -1326,19 +1380,19 @@ process_file_internal(
                         ErrorCodes::too_much_closing_square_brackets,
                         "Closing bracket ']' without opened one at line %u\nCurrent term is '%s'\n",
                         lines_count,
-                        buf
+                        line_buffer
                     );
                     --opened_square_brackets;
                     continue;
                 }
             }
 
-            if (opened_square_brackets == 0 && buf[buff_length - 1] != '\\')
+            if (opened_square_brackets == 0 && line_buffer[buff_length - 1] != '\\')
             {// variable: type (without initialization)
-                memmove(buf + colon_index, fallback_buffer, fallback_buffer_length);
+                memmove(line_buffer + colon_index, fallback_buffer, fallback_buffer_length);
                 buff_length = colon_index + fallback_buffer_length;
-                buf[buff_length] = '\0';
-                fout << buf;
+                line_buffer[buff_length] = '\0';
+                fout << line_buffer;
                 goto update_counters_and_buffer_label;
             }
 
@@ -1347,14 +1401,14 @@ process_file_internal(
                 ErrorCodes::unexpected_eof,
                 "Got EOF instead of type hint end at line %u\nCurrent term is '%s'\n",
                 lines_count,
-                buf
+                line_buffer
             );
         }
 
         write_buffer_label:
             if (buff_length != 0) {
-                buf[buff_length] = '\0';
-                fout << buf;
+                line_buffer[buff_length] = '\0';
+                fout << line_buffer;
             }
             fout << static_cast<char>(curr_char);
             goto update_counters_and_buffer_label;
@@ -1367,7 +1421,7 @@ process_file_internal(
                 printf(
                     "Line: %u;\nTerm: '%s'; Buff length: %zu;\nColon operators starts: %u\n'{' - '}' on line count: %d;\n'[' - ']' on line count: %d;\n'{' counts: %d\n'[' counts: %d\n; Was in initialization context: %d\n\n",
                     lines_count,
-                    buf,
+                    line_buffer,
                     buff_length,
                     colon_operators_starts,
                     dict_or_set_open_minus_close_symbols_before_colon_count,
@@ -1383,14 +1437,14 @@ process_file_internal(
                 ErrorCodes::too_much_closing_curly_brackets,
                 "Closing bracket '}' without opened one at line %u\nCurrent term is '%s'\n",
                 lines_count,
-                buf
+                line_buffer
             );
             AssertWithArgs(
                 list_or_index_init_starts >= 0,
                 ErrorCodes::too_much_closing_square_brackets,
                 "Closing bracket ']' without opened one at line %u\nCurrent term is '%s'\n",
                 lines_count,
-                buf
+                line_buffer
             );
 
             lines_count += late_line_increase_counter;
@@ -1403,15 +1457,15 @@ process_file_internal(
 
     /* Flush buffer */
     if (buff_length != 0) {
-        buf[buff_length] = '\0';
-        fout << buf;
+        line_buffer[buff_length] = '\0';
+        fout << line_buffer;
     }
 
     fout.flush();
 
     dispose_resources_label:
-        if (buf) {
-            delete[](buf);
+        if (line_buffer) {
+            delete[](line_buffer);
         }
         if (fallback_buffer) {
             delete[](fallback_buffer);
@@ -1420,7 +1474,8 @@ process_file_internal(
     return current_state;
 }
 
-std::string generate_tmp_filename(const std::string &filename) {
+static inline std::string
+generate_tmp_filename(const std::string &filename) {
     const size_t slash_index = filename.rfind('/');
     if (slash_index != filename.npos) {
         return "tmp_" + filename.substr(slash_index + 1);
@@ -1434,7 +1489,7 @@ std::string generate_tmp_filename(const std::string &filename) {
     return "tmp_" + filename;
 }
 
-ErrorCodes process_file(
+ ErrorCodes process_file(
     const std::string &input_filename,
     const std::unordered_set<std::string> &ignored_functions,
     const PreprocessorFlags preprocessor_flags
