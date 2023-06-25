@@ -10,9 +10,7 @@ using preprocessor_tools::process_files;
 using preprocessor_tools::parse_flags;
 using preprocessor_tools::from_error;
 
-int main(int argc, const char **const argv) {
-    const PreprocessorFlags flags = parse_flags(argc, argv);
-
+int main(int argc, const char ** argv) {
     std::ifstream files_is("files.txt");
     if (files_is.fail()) {
         std::clog << "Was not able to open file with file paths\n";
@@ -43,6 +41,7 @@ int main(int argc, const char **const argv) {
     }
 
     ErrorCodes ret_code = ErrorCodes::no_errors;
+    PreprocessorFlags flags = parse_flags(argc, argv);
     try {
         if (!flags) {
             ret_code = process_files(filenames, ignored_functions);
