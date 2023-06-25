@@ -8,9 +8,9 @@
 
 namespace preprocessor_tools {
 
-PreprocessorFlags parse_flags(const size_t argc, const char **const argv) noexcept;
+PreprocessorFlags parse_flags(size_t argc, const char ** argv) noexcept;
 
-std::string from_error(const ErrorCodes error_codes);
+std::string from_error(ErrorCodes error_codes);
 
 } // namespace preprocessor_tools
 

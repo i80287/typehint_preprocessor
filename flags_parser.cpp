@@ -29,7 +29,7 @@ static constexpr PreprocessorFlags parse_flag(const char *arg) noexcept {
         break;
     case 'c':
         if (strcmp(++arg, "ontinue_on_error") == 0) {
-            std::clog << "War";
+            std::clog << "Warning: continue_on_error flag is enabled\n";
             return PreprocessorFlags::continue_on_error;
         }
         break;
@@ -43,7 +43,7 @@ static constexpr PreprocessorFlags parse_flag(const char *arg) noexcept {
     return PreprocessorFlags::no_flags;
 }
 
-PreprocessorFlags parse_flags(const size_t argc, const char **const argv) noexcept {
+PreprocessorFlags parse_flags(size_t argc, const char ** argv) noexcept {
     PreprocessorFlags flags = PreprocessorFlags::no_flags;
 
     for (size_t i = 0; i < argc; ++i) {
@@ -58,13 +58,13 @@ PreprocessorFlags parse_flags(const size_t argc, const char **const argv) noexce
     return flags;
 }
 
-std::string from_error(const ErrorCodes error_codes) {
+std::string from_error(ErrorCodes error_codes) {
     std::string error_report("Errors:\n");
     size_t reserve = 0;
     for (uint32_t i = 0; i <= 20; ++i)
         if (error_codes & (1u << i))
             reserve += 32;
-    error_report.reserve(reserve);
+    error_report.reserve(error_report.size() + reserve);
 
     if (error_codes & ErrorCodes::preprocessor_line_buffer_overflow) {
         error_report += "Line buffer overflew (too long line occured)\n";

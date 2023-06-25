@@ -132,13 +132,13 @@ constexpr PreprocessorFlags default_flags = PreprocessorFlags::verbose;
 ErrorCodes process_file(
     const std::string &input_filename,
     const std::unordered_set<std::string> &ignored_functions,
-    const PreprocessorFlags preprocessor_flags = default_flags
+    PreprocessorFlags preprocessor_flags = default_flags
 );
 
 ErrorCodes process_files(
     const std::unordered_set<std::string> &filenames,
     const std::unordered_set<std::string> &ignored_functions,
-    const PreprocessorFlags preprocessor_flags = default_flags
+    PreprocessorFlags preprocessor_flags = default_flags
 );
 
 } // namespace preprocessor_tools

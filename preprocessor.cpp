@@ -69,10 +69,10 @@ do {\
  * copied while parsing.
  * Must be power of two.
  */
-static constexpr size_t MAX_BUFF_SIZE = 8192;
+constexpr inline size_t MAX_BUFF_SIZE = 8192;
 static_assert(MAX_BUFF_SIZE != 0 && (MAX_BUFF_SIZE & (MAX_BUFF_SIZE - 1)) == 0);
 
-static constexpr int EofChar = -1;
+constexpr inline int EofChar = -1;
 
 enum ColonOperator : uint32_t {
     None = 0,
@@ -104,9 +104,13 @@ count_symbols(const char *line_buffer, const size_t length, std::vector<size_t> 
     for (size_t i = 0; i != length; ++i) {
         const int curr_char = line_buffer[i];
         if (is_comment_opened) {
-            if (curr_char == '\n' || curr_char == '\r') {
+            switch (curr_char) {
+            case '\n':
+            case '\r':
                 is_comment_opened = false;
+                break;
             }
+
             continue;
         }
 
@@ -198,7 +202,7 @@ clear_symbols_vects(std::vector<size_t> symbols_indexes[5]) noexcept {
 }
 
 static constexpr bool
-is_colon_operator(const char *line_buffer, const size_t length, ColonOperator& maybe_op) noexcept {
+is_colon_operator(const char *line_buffer, size_t length, ColonOperator& maybe_op) noexcept {
     switch (line_buffer[0]) {
     case 'i':
         maybe_op = ColonOperator::OpIf;
@@ -296,7 +300,7 @@ is_not_delim(int c) noexcept {
 }
 
 static constexpr bool
-is_function_defenition(const char *line_buffer, const size_t length) noexcept {
+is_function_defenition(const char *line_buffer, size_t length) noexcept {
     return (length == 3) && ((line_buffer[0] == 'd') & (line_buffer[1] == 'e') & (line_buffer[2] == 'f'));
 }
 
@@ -346,7 +350,7 @@ process_file_internal(
     std::ifstream &fin,
     std::ofstream &fout,
     const std::unordered_set<std::string> &ignored_functions,
-    const PreprocessorFlags preprocessor_flags
+    PreprocessorFlags preprocessor_flags
 ) {
     size_t buff_length = 0;
     char *const line_buffer = new(std::nothrow) char[MAX_BUFF_SIZE];
@@ -700,7 +704,7 @@ process_file_internal(
                 line_buffer
             );
 
-            function_name_ended_label:
+        function_name_ended_label:
             const bool ignore_function = ignored_functions.contains(function_name);
 
             // Go through function params.
@@ -713,7 +717,7 @@ process_file_internal(
             bool default_value_initialization_started = false;
             bool should_write_to_buf = true;
 
-            function_arg_ended_label:
+        function_arg_ended_label:
             default_value_initialization_started = false;
             should_write_to_buf = true;
             AssertWithArgs(
@@ -941,7 +945,7 @@ process_file_internal(
                 line_buffer
             );
 
-            function_params_initialization_end_label:           
+        function_params_initialization_end_label:           
             CheckBufferLengthReserve(buff_length, 2);
             AssertWithArgs(
                 curr_char == ')',
@@ -1405,54 +1409,52 @@ process_file_internal(
             );
         }
 
-        write_buffer_label:
-            if (buff_length != 0) {
-                line_buffer[buff_length] = '\0';
-                fout << line_buffer;
-            }
-            fout << static_cast<char>(curr_char);
-            goto update_counters_and_buffer_label;
+    write_buffer_label:
+        if (buff_length != 0) {
+            line_buffer[buff_length] = '\0';
+            fout << line_buffer;
+        }
+        fout << static_cast<char>(curr_char);
+        goto update_counters_and_buffer_label;
 
-        update_counters_and_buffer_label:
-            dict_or_set_init_starts += dict_or_set_open_minus_close_symbols_before_colon_count;
-            list_or_index_init_starts += list_or_index_open_minus_close_symbols_before_colon_count;
+    update_counters_and_buffer_label:
+        dict_or_set_init_starts += dict_or_set_open_minus_close_symbols_before_colon_count;
+        list_or_index_init_starts += list_or_index_open_minus_close_symbols_before_colon_count;
 
-            if (is_debug_mode && buff_length != 0) {
-                printf(
-                    "Line: %u;\nTerm: '%s'; Buff length: %zu;\nColon operators starts: %u\n'{' - '}' on line count: %d;\n'[' - ']' on line count: %d;\n'{' counts: %d\n'[' counts: %d\n; Was in initialization context: %d\n\n",
-                    lines_count,
-                    line_buffer,
-                    buff_length,
-                    colon_operators_starts,
-                    dict_or_set_open_minus_close_symbols_before_colon_count,
-                    list_or_index_open_minus_close_symbols_before_colon_count,
-                    dict_or_set_init_starts,
-                    list_or_index_init_starts,
-                    is_in_initialization_context
-                );
-            }
-
-            AssertWithArgs(
-                dict_or_set_init_starts >= 0,
-                ErrorCodes::too_much_closing_curly_brackets,
-                "Closing bracket '}' without opened one at line %u\nCurrent term is '%s'\n",
+        if (is_debug_mode && buff_length != 0) {
+            printf(
+                "Line: %u;\nTerm: '%s'; Buff length: %zu;\nColon operators starts: %u\n'{' - '}' on line count: %d;\n'[' - ']' on line count: %d;\n'{' counts: %d\n'[' counts: %d\n; Was in initialization context: %d\n\n",
                 lines_count,
-                line_buffer
+                line_buffer,
+                buff_length,
+                colon_operators_starts,
+                dict_or_set_open_minus_close_symbols_before_colon_count,
+                list_or_index_open_minus_close_symbols_before_colon_count,
+                dict_or_set_init_starts,
+                list_or_index_init_starts,
+                is_in_initialization_context
             );
-            AssertWithArgs(
-                list_or_index_init_starts >= 0,
-                ErrorCodes::too_much_closing_square_brackets,
-                "Closing bracket ']' without opened one at line %u\nCurrent term is '%s'\n",
-                lines_count,
-                line_buffer
-            );
+        }
 
-            lines_count += late_line_increase_counter;
-            is_string_opened = false;
-            buff_length = 0;
-            late_line_increase_counter = 0;
+        AssertWithArgs(
+            dict_or_set_init_starts >= 0,
+            ErrorCodes::too_much_closing_curly_brackets,
+            "Closing bracket '}' without opened one at line %u\nCurrent term is '%s'\n",
+            lines_count,
+            line_buffer
+        );
+        AssertWithArgs(
+            list_or_index_init_starts >= 0,
+            ErrorCodes::too_much_closing_square_brackets,
+            "Closing bracket ']' without opened one at line %u\nCurrent term is '%s'\n",
+            lines_count,
+            line_buffer
+        );
 
-            continue;
+        lines_count += late_line_increase_counter;
+        is_string_opened = false;
+        buff_length = 0;
+        late_line_increase_counter = 0;
     }
 
     /* Flush buffer */
@@ -1463,13 +1465,9 @@ process_file_internal(
 
     fout.flush();
 
-    dispose_resources_label:
-        if (line_buffer) {
-            delete[](line_buffer);
-        }
-        if (fallback_buffer) {
-            delete[](fallback_buffer);
-        }
+dispose_resources_label:
+    delete[](line_buffer);
+    delete[](fallback_buffer);
 
     return current_state;
 }
@@ -1489,10 +1487,10 @@ generate_tmp_filename(const std::string &filename) {
     return "tmp_" + filename;
 }
 
- ErrorCodes process_file(
+ErrorCodes process_file(
     const std::string &input_filename,
     const std::unordered_set<std::string> &ignored_functions,
-    const PreprocessorFlags preprocessor_flags
+    PreprocessorFlags preprocessor_flags
 ) {
     const bool is_verbose_mode = (preprocessor_flags & PreprocessorFlags::verbose) != PreprocessorFlags::no_flags;
 
@@ -1562,8 +1560,8 @@ generate_tmp_filename(const std::string &filename) {
         else if (is_verbose_mode) {
             std::cout << "Overwrote source file " << input_filename << '\n';
         }
-        
-        if (std::remove(tmp_file_name.data()) == 0) {
+
+        if (std::remove(tmp_file_name.c_str()) == 0) {
             if (is_verbose_mode) {
                 std::cout << "Successfully deleted tmp file " << tmp_file_name << '\n';
             }
@@ -1585,7 +1583,7 @@ generate_tmp_filename(const std::string &filename) {
 ErrorCodes process_files(
     const std::unordered_set<std::string> &filenames,
     const std::unordered_set<std::string> &ignored_functions,
-    const PreprocessorFlags preprocessor_flags
+    PreprocessorFlags preprocessor_flags
 ) {
     const bool is_verbose_mode = (preprocessor_flags & PreprocessorFlags::verbose) != PreprocessorFlags::no_flags;
     size_t processed_files = 0;
@@ -1610,6 +1608,9 @@ ErrorCodes process_files(
             fprintf(stderr, "An error occured while processing %zu / %zu file '%s'\n", processed_files, total_files, filename.c_str());
         }
     }
+
+    std::clog.flush();
+    std::cout.flush();
 
     return current_state;
 }
